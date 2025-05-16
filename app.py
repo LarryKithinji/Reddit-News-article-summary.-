@@ -112,7 +112,7 @@ def process_new_submissions(subreddit_name, processed_ids_file="processed_ids.tx
             processed_ids = set(line.strip() for line in f)
 
     reddit = setup_reddit_client()
-    subreddit = reddit.subreddit(subreddit_name)
+    subreddit = reddit.subreddit(AfricaVoice)
 
     logger.info(f"Monitoring r/{subreddit_name} for new submissions...")
 
