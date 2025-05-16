@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "ksTsc5QAyNszWGO7JhppEw"
-    REDDIT_CLIENT_SECRET = "cK1DIqyvGFd5QuncYZcvpHVZ6BOfqQ"
+    REDDIT_CLIENT_ID = "Jst9ADotJjeUs1YpX17T2A"
+    REDDIT_CLIENT_SECRET = "DOj-XOQ1uCTQeL3Y5btfbJCkj6q9eg"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "NoseAggravating8678"
-    REDDIT_PASSWORD = "KePCCgt2minU1s1"
+    REDDIT_USERNAME = "The_True_African"
+    REDDIT_PASSWORD = "45aUM8j7bGrhu64"
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
