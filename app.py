@@ -33,6 +33,30 @@ class Config:
     LANGUAGE = "english"  # Language for Sumy summarizer
     SENTENCES_COUNT = 4  # Number of sentences for summary
 
+# Download NLTK resources if not already downloaded
+def download_nltk_resources():
+    try:
+        nltk.data.find('tokenizers/punkt')
+        logger.info("NLTK punkt tokenizers already downloaded")
+    except LookupError:
+        logger.info("Downloading NLTK punkt tokenizers...")
+        nltk.download('punkt')
+        
+    try:
+        nltk.data.find('tokenizers/punkt_tab')
+        logger.info("NLTK punkt_tab tokenizers already downloaded")
+    except LookupError:
+        logger.info("Downloading NLTK punkt_tab tokenizers...")
+        nltk.download('punkt_tab')
+        
+    # You might need stopwords too
+    try:
+        nltk.data.find('corpora/stopwords')
+        logger.info("NLTK stopwords already downloaded")
+    except LookupError:
+        logger.info("Downloading NLTK stopwords...")
+        nltk.download('stopwords')
+
 # Content extractor class
 class ContentExtractor:
     def extract_content(self, url: str) -> Optional[str]:
