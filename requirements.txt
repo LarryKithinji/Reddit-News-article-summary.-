@@ -9,3 +9,5 @@ python-dateutil>=2.8.2
 scipy>=1.8.0
 numpy>=1.22.0
 scikit-learn>=1.0.2
+# Make sure to run the following command after installing requirements:
+# python -c "import nltk; nltk.download('punkt')"
