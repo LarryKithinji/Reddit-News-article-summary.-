@@ -2,3 +2,5 @@ sumy
 nltk
 praw
 newspaper3k
+# Custom/local modules (not on PyPI):
+# smrzr, altsummary, prawoauth2, find_other_news_sources, blacklist, subreddits, message_templates
