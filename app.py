@@ -1,5 +1,5 @@
 import praw
-import smrzr
+import summarizer as smrzr
 from altsummary import summary
 import os
 import find_other_news_sources
