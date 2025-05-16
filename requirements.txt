@@ -2,4 +2,4 @@ sumy
 nltk
 praw
 newspaper3k
- smrzr
+smrzr
