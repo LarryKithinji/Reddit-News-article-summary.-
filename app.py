@@ -39,17 +39,6 @@ def setup_reddit_client():
     except Exception as e:
         logger.error(f"Failed to authenticate with Reddit:\n{traceback.format_exc()}")
         raise
-# --- Subreddits to monitor 
-def main():
-    subreddit_name = "AfricaVoice"  # hardcoded subreddit
-    monitor = True  # set to True to monitor continuously
-
-    if monitor:
-        logger.info(f"Monitoring r/{subreddit_name}...")
-        process_new_submissions(subreddit_name)
-    else:
-        logger.info(f"Running one-time for r/{subreddit_name}...")
-        # one-time processing logic...
 
 # --- Article extraction ---
 def extract_article_content(url):
