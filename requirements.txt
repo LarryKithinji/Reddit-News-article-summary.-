@@ -10,4 +10,4 @@ bert-extractive-summarizer
 torch
 breadability
 lxml
-prawoauth2
+# prawoauth2 may need to be installed manually if not found on PyPI
