@@ -2,22 +2,20 @@ import praw
 import requests
 import logging
 import time
-from datetime import datetime
 from typing import Optional
-import google.generativeai as genai
-import trafilatura
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
+from bs4 import BeautifulSoup
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer  # Example algorithm
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
 
 # Logging setup
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler('reddit_bot_advanced.log', mode='a', encoding='utf-8'),
+        logging.FileHandler("reddit_bot.log", mode="a", encoding="utf-8"),
         logging.StreamHandler()
     ]
 )
@@ -25,150 +23,135 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "UPmL7obZQuA0lBYPm3AjGw"
-    REDDIT_CLIENT_SECRET = "uc8uPJxAigPIXtuf_hBMWIvPqCmnNQ"
+    REDDIT_CLIENT_ID = "ksTsc5QAyNszWGO7JhppEw"
+    REDDIT_CLIENT_SECRET = "cK1DIqyvGFd5QuncYZcvpHVZ6BOfqQ"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "Agile-Drummer-1160"
+    REDDIT_USERNAME = "NoseAggravating8678"
     REDDIT_PASSWORD = "KePCCgt2minU1s1"
-    GEMINI_API_KEY = "AIzaSyDYjIuQUoAxhbNnl1oKSm5cfdJJqJGN9TY"
-
-    SUBREDDIT_NAME = "East_AfricanCommunity"
-    RATE_LIMIT_REQUESTS = 5
-    RATE_LIMIT_WINDOW = 60
-    ERROR_RETRY_DELAY = 60
-    API_ERROR_DELAY = 300
-    NORMAL_DELAY = 30
-    MIN_SUMMARY_LENGTH = 200
-    MAX_RETRIES = 3
-    ANTI_PAYWALL_URL = "https://smry.ai/?url="
-
-# Analytics class
-class ContentAnalytics:
-    def __init__(self):
-        self.extraction_attempts = {}
-        self.extraction_successes = {}
-
-    def log_attempt(self, domain: str, strategy: str, success: bool):
-        if domain not in self.extraction_attempts:
-            self.extraction_attempts[domain] = {}
-            self.extraction_successes[domain] = {}
-        if strategy not in self.extraction_attempts[domain]:
-            self.extraction_attempts[domain][strategy] = 0
-            self.extraction_successes[domain][strategy] = 0
-        self.extraction_attempts[domain][strategy] += 1
-        if success:
-            self.extraction_successes[domain][strategy] += 1
+    COMMENT_DELAY = 120  # 2 minutes between comments
+    SUBMISSION_DELAY = 60  # 1 minute between submission checks
+    LANGUAGE = "english"  # Language for Sumy summarizer
+    SENTENCES_COUNT = 4  # Number of sentences for summary
 
 # Content extractor class
 class ContentExtractor:
-    def __init__(self, analytics: ContentAnalytics):
-        self.analytics = analytics
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0'
-        })
-
     def extract_content(self, url: str) -> Optional[str]:
-        # First, try the anti-paywall route
-        content = self._try_antipaywall(url)
-        if content:
-            return content
-
-        # If the anti-paywall route fails, fall back to standard extraction
-        return self._try_normal_extraction(url)
-
-    def _try_antipaywall(self, url: str) -> Optional[str]:
+        """Extracts main content from a webpage using BeautifulSoup."""
         try:
-            antipaywall_url = f"{Config.ANTI_PAYWALL_URL}{url}"
-            response = self.session.get(antipaywall_url)
+            response = requests.get(url, timeout=10)
             if response.status_code == 200:
-                # Assuming Smry.ai returns the content as plain text
-                return response.text
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Extract main content by focusing on paragraphs
+                paragraphs = soup.find_all('p')
+                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+
+                # Validate extracted content length
+                if len(content) > 100:
+                    return content
+                else:
+                    logger.warning(f"Content too short after parsing: {len(content)} characters")
+                    return None
             else:
-                logger.warning(f"Failed to extract via anti-paywall: {response.status_code}")
+                logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
                 return None
         except Exception as e:
-            logger.warning(f"Anti-paywall extraction failed: {e}")
+            logger.error(f"Error fetching or parsing content: {e}")
             return None
 
-    def _try_normal_extraction(self, url: str) -> Optional[str]:
+# Sumy Summarizer class
+class SumySummarizer:
+    def __init__(self):
+        self.language = Config.LANGUAGE
+        self.sentence_count = Config.SENTENCES_COUNT
+
+    def generate_summary(self, content: str) -> Optional[str]:
+        """Generates a concise summary using Sumy."""
         try:
-            downloaded = trafilatura.fetch_url(url)
-            content = trafilatura.extract(downloaded, include_comments=False)
-            return content if content else None
+            parser = PlaintextParser.from_string(content, Tokenizer(self.language))
+            summarizer = LsaSummarizer(Stemmer(self.language))
+            summarizer.stop_words = get_stop_words(self.language)
+
+            # Extract summary sentences
+            sentences = summarizer(parser.document, self.sentence_count)
+            summary = ' '.join(str(sentence) for sentence in sentences)
+
+            if summary:
+                return summary
+            else:
+                logger.warning("Summary generation failed. Sumy returned no content.")
+                return None
         except Exception as e:
-            logger.warning(f"Failed to extract content normally: {e}")
+            logger.error(f"Error generating summary: {e}")
             return None
 
 # Reddit Bot class
 class RedditBot:
     def __init__(self):
-        self.analytics = ContentAnalytics()
-        self.extractor = ContentExtractor(self.analytics)
-        genai.configure(api_key=Config.GEMINI_API_KEY)
+        self.extractor = ContentExtractor()
+        self.summarizer = SumySummarizer()
         self.reddit = praw.Reddit(
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
             user_agent=Config.REDDIT_USER_AGENT,
             username=Config.REDDIT_USERNAME,
-            password=Config.REDDIT_PASSWORD
+            password=Config.REDDIT_PASSWORD,
         )
-        self.processed_posts = set()
+        self.last_submission_time = time.time()  # Keep track of the latest processed submission time
 
-    def run(self):
+        # Authentication check
+        try:
+            me = self.reddit.user.me()
+            logger.info(f"Successfully authenticated as: {me.name}")
+        except Exception as e:
+            logger.error(f"Authentication failed: {str(e)}")
+
+    def run(self, subreddit_name: str):
+        """Main loop to monitor the subreddit and process new submissions."""
+        logger.info(f"Starting bot for subreddit: {subreddit_name}")
+        subreddit = self.reddit.subreddit(subreddit_name)
+
         while True:
             try:
-                subreddit = self.reddit.subreddit(Config.SUBREDDIT_NAME)
-                for submission in subreddit.stream.submissions(skip_existing=True):
-                    if submission.id not in self.processed_posts:
+                for submission in subreddit.new(limit=10):
+                    if submission.created_utc > self.last_submission_time:
                         self._process_submission(submission)
-                        self.processed_posts.add(submission.id)
-                        time.sleep(Config.NORMAL_DELAY)
+                        self.last_submission_time = submission.created_utc
+                        time.sleep(Config.SUBMISSION_DELAY)
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                time.sleep(Config.ERROR_RETRY_DELAY)
+                time.sleep(60)
 
     def _process_submission(self, submission):
+        """Processes a single submission, extracts content, and posts a summary."""
         try:
+            logger.info(f"Processing submission: {submission.title} (ID: {submission.id})")
             content = self.extractor.extract_content(submission.url)
-            if not content:
-                logger.info(f"Content not found for {submission.url}. Falling back to title-based search.")
-                summary = self._generate_summary_from_title(submission.title)
+
+            if content:
+                logger.info(f"Extracted content of length: {len(content)} characters")
+                summary = self.summarizer.generate_summary(content)
+
+                if summary:
+                    logger.info(f"Generated summary: {summary[:60]}...")  # Log first 60 chars
+                    self._post_comment(submission, summary)
+                else:
+                    logger.warning("Summary generation failed")
             else:
-                summary = self._generate_summary(content)
-
-            if summary:
-                self._post_comment(submission, summary)
+                logger.warning("Content extraction failed")
         except Exception as e:
-            logger.error(f"Error processing submission {submission.id}: {e}")
-
-    def _generate_summary(self, content: str) -> Optional[str]:
-        try:
-            model = genai.GenerativeModel('gemini-1.5-pro')
-            prompt = f"Summarize this article:\n\n{content}"
-            response = model.generate_content(prompt)
-            return response.text if response else None
-        except Exception as e:
-            logger.error(f"Error generating summary: {e}")
-            return None
-
-    def _generate_summary_from_title(self, title: str) -> Optional[str]:
-        try:
-            model = genai.GenerativeModel('gemini-1.5-pro')
-            prompt = f"Provide a concise summary of any relevant information about: {title}"
-            response = model.generate_content(prompt)
-            return response.text if response else None
-        except Exception as e:
-            logger.error(f"Error generating summary from title: {e}")
-            return None
+            logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
 
     def _post_comment(self, submission, summary: str):
+        """Posts a comment on the submission with the generated summary."""
         try:
-            submission.reply(f"**Article Summary:**\n\n{summary}")
+            submission.reply(summary)
+            logger.info(f"Comment posted successfully on submission {submission.id}")
+            time.sleep(Config.COMMENT_DELAY)
         except Exception as e:
-            logger.error(f"Error posting comment: {e}")
+            logger.error(f"Failed to post comment on submission {submission.id}: {e}")
 
 # Run the bot
 if __name__ == "__main__":
     bot = RedditBot()
-    bot.run()
+    bot.run("East_AfricanCommunity")
