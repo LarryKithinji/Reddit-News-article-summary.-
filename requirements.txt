@@ -1,6 +1,6 @@
 sumy
-nltk
 praw
+prawcore
+altsummary
+prawoauth2
 newspaper3k
-git+https://github.com/networkx/networkx.git
-newspaper
