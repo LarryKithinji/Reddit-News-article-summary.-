@@ -3,3 +3,4 @@ nltk
 praw
 newspaper3k
 git+https://github.com/networkx/networkx.git
+newspaper
