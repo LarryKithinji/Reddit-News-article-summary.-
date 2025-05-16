@@ -1,5 +1,4 @@
 import praw
-import requests
 from newspaper import Article
 import textwrap
 import os
@@ -10,6 +9,9 @@ import logging
 import traceback
 from transformers import pipeline
 
+# --- Load environment variables ---
+load_dotenv()
+
 # --- Logging Setup ---
 logging.basicConfig(
     level=logging.INFO,
@@ -18,10 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("Reddit News Summarizer")
 
-# --- Load environment variables ---
-load_dotenv()
-
-# --- Global summarizer model ---
+# --- Load summarizer model once ---
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
 # --- Reddit client setup ---
@@ -34,11 +33,10 @@ def setup_reddit_client():
             password=os.getenv("REDDIT_PASSWORD"),
             user_agent=os.getenv("REDDIT_USER_AGENT", "NewsArticleSummarizer v1.0")
         )
-python your_script_name.py --subreddit AfricaVoice 
         logger.info(f"Authenticated as {reddit.user.me()}")
         return reddit
-    except Exception as e:
-        logger.error(f"Failed to authenticate with Reddit:\n{traceback.format_exc()}")
+    except Exception:
+        logger.error("Reddit authentication failed:\n" + traceback.format_exc())
         raise
 
 # --- Article extraction ---
@@ -50,7 +48,7 @@ def extract_article_content(url):
 
         if len(article.text) < 100:
             logger.warning(f"Article too short ({len(article.text)} characters). Might be poorly extracted.")
-        
+
         return {
             "title": article.title,
             "text": article.text,
@@ -58,7 +56,7 @@ def extract_article_content(url):
             "publish_date": article.publish_date,
             "top_image": article.top_image
         }
-    except Exception as e:
+    except Exception:
         logger.error(f"Error extracting article from {url}:\n{traceback.format_exc()}")
         return None
 
@@ -81,8 +79,8 @@ def summarize_text(text, max_length=150, min_length=40):
             final_summary = final_summary[:9500] + "..."
 
         return final_summary
-    except Exception as e:
-        logger.error(f"Failed to summarize text:\n{traceback.format_exc()}")
+    except Exception:
+        logger.error("Summarization failed:\n" + traceback.format_exc())
         return "Error generating summary."
 
 # --- Comment formatting ---
@@ -105,7 +103,7 @@ def format_reddit_comment(article_data, summary):
 
     return comment
 
-# --- Process submissions ---
+# --- Submission processing ---
 def process_new_submissions(subreddit_name, processed_ids_file="processed_ids.txt"):
     processed_ids = set()
     if os.path.exists(processed_ids_file):
@@ -113,7 +111,7 @@ def process_new_submissions(subreddit_name, processed_ids_file="processed_ids.tx
             processed_ids = set(line.strip() for line in f)
 
     reddit = setup_reddit_client()
-    subreddit = reddit.subreddit(AfricaVoice)
+    subreddit = reddit.subreddit(subreddit_name)
 
     logger.info(f"Monitoring r/{subreddit_name} for new submissions...")
 
@@ -137,20 +135,26 @@ def process_new_submissions(subreddit_name, processed_ids_file="processed_ids.tx
                 submission.reply(comment_text)
                 logger.info(f"Comment posted to: {submission.title}")
                 time.sleep(5)
-            except Exception as e:
-                logger.error(f"Error posting comment:\n{traceback.format_exc()}")
+            except Exception:
+                logger.error("Error posting comment:\n" + traceback.format_exc())
 
         processed_ids.add(submission.id)
         with open(processed_ids_file, "a") as f:
             f.write(f"{submission.id}\n")
 
-# --- Main function ---
+# --- Main Entry ---
 def main():
+    default_subreddit = os.getenv("SUBREDDIT_NAME")
     parser = argparse.ArgumentParser(description='Reddit News Article Summarizer')
-    parser.add_argument('--subreddit', '-s', type=str, required=True, help='Subreddit name (without the r/)')
+    parser.add_argument('--subreddit', '-s', type=str, default=default_subreddit, required=default_subreddit is None,
+                        help='Subreddit name (without the r/)')
     parser.add_argument('--monitor', '-m', action='store_true', help='Continuously monitor subreddit')
 
     args = parser.parse_args()
+
+    if not args.subreddit:
+        logger.error("Subreddit name must be provided via --subreddit or SUBREDDIT_NAME in .env")
+        return
 
     if args.monitor:
         logger.info(f"Continuous monitoring mode for r/{args.subreddit}")
@@ -158,10 +162,10 @@ def main():
             process_new_submissions(args.subreddit)
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt received. Exiting...")
-        except Exception as e:
-            logger.error(f"Monitoring failed:\n{traceback.format_exc()}")
+        except Exception:
+            logger.error("Monitoring loop failed:\n" + traceback.format_exc())
     else:
-        logger.info(f"One-time check for r/{args.subreddit}")
+        logger.info(f"One-time summary mode for r/{args.subreddit}")
         reddit = setup_reddit_client()
         subreddit = reddit.subreddit(args.subreddit)
         latest = list(subreddit.new(limit=1))
@@ -177,10 +181,11 @@ def main():
                     try:
                         submission.reply(comment_text)
                         logger.info(f"Comment posted to: {submission.title}")
-                    except Exception as e:
-                        logger.error(f"Failed to post comment:\n{traceback.format_exc()}")
+                    except Exception:
+                        logger.error("Error posting comment:\n" + traceback.format_exc())
+
         logger.info("Finished one-time run.")
 
-# --- Run script ---
+# --- Script entry point ---
 if __name__ == "__main__":
     main()
