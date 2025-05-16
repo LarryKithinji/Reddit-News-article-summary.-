@@ -1,9 +1,9 @@
-goose3==3.1.12                     # Maintained fork of goose-extractor
-praw==7.7.1                        # Latest stable PRAW version
-networkx==3.3                      # Install from PyPI (Git install no longer needed)
-numpy==1.26.4                      # Updated for modern systems
-scipy==1.13.0                      # Compatible with latest NumPy
-scikit-learn==1.4.2               # Updated ML library
-sumy==0.11.0                       # Latest version
-prawoauth2==0.1.5                  # No newer version available
-newspaper3k==0.2.8                 # Actively maintained fork of `newspaper`
+goose3
+praw
+networkx
+numpy
+scipy
+scikit-learn
+sumy
+prawoauth2
+newspaper3k
