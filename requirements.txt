@@ -1,13 +1,11 @@
-praw>=7.7.1
+praw>=7.7.0
+requests>=2.28.0
+beautifulsoup4>=4.11.0
 sumy>=0.11.0
-goose3>=3.1.12
-numpy>=1.25.0
-scipy>=1.11.0
-scikit-learn>=1.3.0
-networkx>=3.1
-newspaper3k>=0.2.8
-bert-extractive-summarizer
-torch
-breadability
-lxml
-# prawoauth2 may need to be installed manually if not found on PyPI
+nltk>=3.7.0
+typing>=3.7.4
+python-dateutil>=2.8.2
+# Optional dependencies that sumy might need
+scipy>=1.8.0
+numpy>=1.22.0
+scikit-learn>=1.0.2
