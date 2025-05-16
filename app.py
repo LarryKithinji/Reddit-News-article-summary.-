@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "Jst9ADotJjeUs1YpX17T2A"
-    REDDIT_CLIENT_SECRET = "DOj-XOQ1uCTQeL3Y5btfbJCkj6q9eg"
+    REDDIT_CLIENT_ID = "4Cwkr1ASzdTiGrPiGOuBNA"
+    REDDIT_CLIENT_SECRET = "8XzYlPegIRJDJLiLKXx9rqddecCUfQ"
     REDDIT_USER_AGENT = "CommentBot"
     REDDIT_USERNAME = "The_True_African"
     REDDIT_PASSWORD = "45aUM8j7bGrhu64"
@@ -154,4 +154,4 @@ class RedditBot:
 # Run the bot
 if __name__ == "__main__":
     bot = RedditBot()
-    bot.run("East_AfricanCommunity")
+    bot.run("AfricaVoice")
