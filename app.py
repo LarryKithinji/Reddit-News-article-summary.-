@@ -1,5 +1,5 @@
 import praw
-import summarizer as smrzr
+from summarizer import Summarizer
 from altsummary import summary
 import os
 import find_other_news_sources
@@ -26,8 +26,7 @@ def init():
     return r, oauth_helper, subreddit
 
 def postTracker():
-    """File to keep track of posts already looked, gets refreshed if bot is restarted.
-    put pointer at start, then reads the file to string and then puts the pointer back at the end."""
+    """Keeps track of posts already looked at. File pointer at start, then reads the file to string and then puts the pointer back at end."""
     fo = open("looked.txt", "a+")
     position = fo.tell()
     fo.seek(0, 0)
@@ -45,15 +44,27 @@ def isPosted(comments):
     return False
 
 def summarizeSMRZR(url):
-    """get post information and summary using Smrzr. Format properly."""
-    summ_article = smrzr.Summarizer(url, 4, 'default', 'newspaper')
-    keypoints = summ_article.keypoints
-    summ = summ_article.summary
-    message = "\n\n> * ".join(keypoints)
-    message = "> * " + message
-    message = message.replace("`", "")
-    message = message.replace("#", "\\#")
-    return summ, message, summ_article.text
+    """Summarize article using BERT extractive summarizer."""
+    try:
+        # Download and parse article
+        article = Article(url)
+        article.download()
+        article.parse()
+        article_text = article.text
+
+        # Summarize using BERT
+        model = Summarizer()
+        summary_text = model(article_text, min_length=60)
+        keypoints = summary_text.split('\n')
+
+        message = "\n\n> * ".join(keypoints)
+        message = "> * " + message
+        message = message.replace("`", "")
+        message = message.replace("#", "\\#")
+        return summary_text, message, article_text
+    except Exception as e:
+        print(f"Error summarizing with SMRZR: {e}")
+        return "", "", ""
 
 def processSummarization(file_handler, submission, method):
     if method == 'smrzr':
@@ -196,19 +207,10 @@ def start():
                     nothing = False
                     try:
                         processSummarization(fo, submission, 'smrzr')
-                    except smrzr.ArticleExtractionFail:
-                        print("Article Extraction Failed")
-                        continue
-                    except AssertionError:
-                        print("Assertion Error")
-                        processSummarization(fo, submission, 'other')
                     except Exception as e:
-                        print("Unknown ERROR")
-                        print(type(e))
-                        print(e.args)
+                        print("Summarization failed, trying 'other' method.")
                         print(e)
-                        print(submission.id)
-                        print("\n")
+                        processSummarization(fo, submission, 'other')
                         continue
                     fo.close()
                 else:
