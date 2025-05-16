@@ -30,7 +30,7 @@ class Config:
     REDDIT_USER_AGENT = "CommentBot"
     REDDIT_USERNAME = "Agile-Drummer-1160"
     REDDIT_PASSWORD = "KePCCgt2minU1s1"
-   GEMINI_API_KEY = "AIzaSyDYjIuQUoAxhbNnl1oKSm5cfdJJqJGN9TY"
+    GEMINI_API_KEY = "AIzaSyDYjIuQUoAxhbNnl1oKSm5cfdJJqJGN9TY"
 
     SUBREDDIT_NAME = "East_AfricanCommunity"
     RATE_LIMIT_REQUESTS = 5
