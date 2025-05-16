@@ -1,9 +1,8 @@
-goose3
-praw==7.8.1
-networkx
-numpy
-scipy
-scikit-learn
-sumy
-prawoauth2
-newspaper3k
+goose3==3.1.12
+praw==7.7.1
+numpy==1.26.4
+scipy==1.13.0
+scikit-learn==1.4.2
+sumy==0.11.0
+prawoauth2==0.1.5
+newspaper3k==0.2.8
