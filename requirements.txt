@@ -7,4 +7,5 @@ scikit-learn>=1.3.0
 networkx>=3.1
 newspaper3k>=0.2.8
 bert-extractive-summarizer
+torch 
 # prawoauth2 may need to be removed/updated manually
