@@ -34,6 +34,7 @@ def setup_reddit_client():
             password=os.getenv("REDDIT_PASSWORD"),
             user_agent=os.getenv("REDDIT_USER_AGENT", "NewsArticleSummarizer v1.0")
         )
+python your_script_name.py --subreddit AfricaVoice 
         logger.info(f"Authenticated as {reddit.user.me()}")
         return reddit
     except Exception as e:
