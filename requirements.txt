@@ -4,3 +4,4 @@ newspaper3k
 python-dotenv
 transformers
 torch
+lxml_html_clean
