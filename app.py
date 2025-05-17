@@ -26,36 +26,12 @@ class Config:
     REDDIT_CLIENT_ID = "4Cwkr1ASzdTiGrPiGOuBNA"
     REDDIT_CLIENT_SECRET = "8XzYlPegIRJDJLiLKXx9rqddecCUfQ"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "The_True_African"
+    REDDIT_USERNAME = ""The_True_African"
     REDDIT_PASSWORD = "45aUM8j7bGrhu64"
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
     SENTENCES_COUNT = 4  # Number of sentences for summary
-
-# Download NLTK resources if not already downloaded
-def download_nltk_resources():
-    try:
-        nltk.data.find('tokenizers/punkt')
-        logger.info("NLTK punkt tokenizers already downloaded")
-    except LookupError:
-        logger.info("Downloading NLTK punkt tokenizers...")
-        nltk.download('punkt')
-        
-    try:
-        nltk.data.find('tokenizers/punkt_tab')
-        logger.info("NLTK punkt_tab tokenizers already downloaded")
-    except LookupError:
-        logger.info("Downloading NLTK punkt_tab tokenizers...")
-        nltk.download('punkt_tab')
-        
-    # You might need stopwords too
-    try:
-        nltk.data.find('corpora/stopwords')
-        logger.info("NLTK stopwords already downloaded")
-    except LookupError:
-        logger.info("Downloading NLTK stopwords...")
-        nltk.download('stopwords')
 
 # Content extractor class
 class ContentExtractor:
@@ -178,4 +154,4 @@ class RedditBot:
 # Run the bot
 if __name__ == "__main__":
     bot = RedditBot()
-    bot.run("AfricaVoice")
+    bot.run("East_AfricanCommunity")
