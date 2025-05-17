@@ -26,7 +26,7 @@ class Config:
     REDDIT_CLIENT_ID = "4Cwkr1ASzdTiGrPiGOuBNA"
     REDDIT_CLIENT_SECRET = "8XzYlPegIRJDJLiLKXx9rqddecCUfQ"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = ""The_True_African"
+    REDDIT_USERNAME = "The_True_African"
     REDDIT_PASSWORD = "45aUM8j7bGrhu64"
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
