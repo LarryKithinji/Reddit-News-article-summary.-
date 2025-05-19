@@ -27,7 +27,7 @@ class Config:
     REDDIT_CLIENT_SECRET = "	-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
     REDDIT_USER_AGENT = "CommentBot"
     REDDIT_USERNAME = "Old-Star54"
-    REDDIT_PASSWORD = "KePCCgt2minU1s1"
+    REDDIT_PASSWORD = "Old-Star54"
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
