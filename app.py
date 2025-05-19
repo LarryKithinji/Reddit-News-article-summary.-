@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "4Cwkr1ASzdTiGrPiGOuBNA"
-    REDDIT_CLIENT_SECRET = "8XzYlPegIRJDJLiLKXx9rqddecCUfQ"
+    REDDIT_CLIENT_ID = "f7W8IqjORfzKsNqHVVSlJg"
+    REDDIT_CLIENT_SECRET = "	-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "The_True_African"
-    REDDIT_PASSWORD = "45aUM8j7bGrhu64"
+    REDDIT_USERNAME = "Old-Star54"
+    REDDIT_PASSWORD = "KePCCgt2minU1s1"
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
@@ -154,4 +154,4 @@ class RedditBot:
 # Run the bot
 if __name__ == "__main__":
     bot = RedditBot()
-    bot.run("East_AfricanCommunity")
+    bot.run("AfricaVoice")
