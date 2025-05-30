@@ -6,10 +6,13 @@ from typing import Optional
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
-from sumy.summarizers.lsa import LsaSummarizer  # Example algorithm
+from sumy.summarizers.lsa import LsaSummarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 
+# 🔽 Fix: ensure punkt tokenizer is downloaded
+import nltk
+nltk.download('punkt', quiet=True)
 # Logging setup
 logging.basicConfig(
     level=logging.INFO,
