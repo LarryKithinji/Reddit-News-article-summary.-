@@ -76,15 +76,45 @@ class ContentExtractor:
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
-                # Extract main content by focusing on paragraphs
-                paragraphs = soup.find_all('p')
-                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+                # Remove unwanted elements that contain promotional content
+                for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
+                    element.decompose()
+                
+                # Remove elements with promotional/advertising classes/ids
+                promotional_selectors = [
+                    '[class*="ad"]', '[id*="ad"]', '[class*="advertisement"]',
+                    '[class*="promo"]', '[class*="sponsor"]', '[class*="related"]',
+                    '[class*="author-bio"]', '[class*="author-info"]', '[class*="share"]',
+                    '[class*="social"]', '[class*="newsletter"]', '[class*="subscribe"]'
+                ]
+                
+                for selector in promotional_selectors:
+                    for element in soup.select(selector):
+                        element.decompose()
+                
+                # Try to find main article content first
+                article_content = None
+                
+                # Look for common article containers
+                article_selectors = ['article', 'main', '[class*="content"]', '[class*="article"]', '[class*="post"]']
+                for selector in article_selectors:
+                    article_element = soup.select_one(selector)
+                    if article_element:
+                        paragraphs = article_element.find_all('p')
+                        if len(paragraphs) >= 2:  # Must have at least 2 paragraphs
+                            article_content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+                            break
+                
+                # Fallback to all paragraphs if no article container found
+                if not article_content:
+                    paragraphs = soup.find_all('p')
+                    article_content = ' '.join(p.get_text(strip=True) for p in paragraphs)
 
                 # Validate extracted content length
-                if len(content) > 100:
-                    return content
+                if article_content and len(article_content) > 200:  # Increased minimum length
+                    return article_content
                 else:
-                    logger.warning(f"Content too short after parsing: {len(content)} characters")
+                    logger.warning(f"Content too short after parsing: {len(article_content) if article_content else 0} characters")
                     return None
             else:
                 logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
@@ -170,7 +200,12 @@ class RedditBot:
 
                 if summary:
                     logger.info(f"Generated summary: {summary[:60]}...")  # Log first 60 chars
-                    self._post_comment(submission, summary)
+                    # Check if summary meets minimum word count, if not, skip posting
+                    word_count = len(summary.split())
+                    if word_count >= 30:  # Minimum threshold for meaningful summary
+                        self._post_comment(submission, summary)
+                    else:
+                        logger.warning(f"Summary too short ({word_count} words), skipping post")
                 else:
                     logger.warning("Summary generation failed")
             else:
@@ -181,11 +216,35 @@ class RedditBot:
     def _post_comment(self, submission, summary: str):
         """Posts a comment on the submission with the generated summary."""
         try:
-            submission.reply(summary)
+            # Format the comment according to the specified template
+            formatted_comment = self._format_comment(submission.title, summary)
+            submission.reply(formatted_comment)
             logger.info(f"Comment posted successfully on submission {submission.id}")
             time.sleep(Config.COMMENT_DELAY)
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
+    
+    def _format_comment(self, title: str, summary: str) -> str:
+        """Formats the comment according to the specified template."""
+        # Ensure summary is within word count limits (75-100 words)
+        words = summary.split()
+        if len(words) < 75:
+            # If too short, keep the original summary
+            formatted_summary = summary
+        elif len(words) > 100:
+            # If too long, truncate to 100 words
+            formatted_summary = ' '.join(words[:100])
+        else:
+            formatted_summary = summary
+        
+        # Create the formatted comment
+        formatted_comment = f"""TLDR for "{title}"
+
+{formatted_summary}
+
+*This *is *a *TLDR *bot *for *r/AfricaVoice!"""
+        
+        return formatted_comment
 
 # Run the bot
 if __name__ == "__main__":
