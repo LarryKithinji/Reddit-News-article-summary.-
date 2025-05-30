@@ -63,6 +63,9 @@ class Config:
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
     SENTENCES_COUNT = 4  # Number of sentences for summary
+    # Liberal summary length thresholds for complete summaries
+    MIN_SUMMARY_WORDS = 80  # Minimum words (reduced from 100)
+    MAX_SUMMARY_WORDS = 150  # Maximum words (increased from 110)
 
 # Content extractor class
 class ContentExtractor:
@@ -98,17 +101,46 @@ class ContentExtractor:
 class GoogleNewsExtractor:
     def __init__(self):
         self.base_url = "https://news.google.com/rss/search"
+        # Africa-related keywords for filtering
+        self.africa_keywords = [
+            # African countries
+            'nigeria', 'south africa', 'kenya', 'ghana', 'ethiopia', 'egypt', 'morocco', 'algeria', 
+            'tunisia', 'libya', 'sudan', 'uganda', 'tanzania', 'zimbabwe', 'botswana', 'namibia',
+            'zambia', 'malawi', 'mozambique', 'madagascar', 'cameroon', 'ivory coast', 'senegal',
+            'mali', 'burkina faso', 'niger', 'chad', 'central african republic', 'democratic republic congo',
+            'republic congo', 'gabon', 'equatorial guinea', 'sao tome', 'cape verde', 'gambia',
+            'guinea bissau', 'guinea', 'sierra leone', 'liberia', 'togo', 'benin', 'rwanda',
+            'burundi', 'djibouti', 'eritrea', 'somalia', 'comoros', 'mauritius', 'seychelles',
+            'lesotho', 'swaziland', 'eswatini', 'angola',
+            # General Africa terms
+            'africa', 'african', 'sub-saharan', 'west africa', 'east africa', 'north africa', 
+            'southern africa', 'central africa', 'african union', 'au summit', 'ecowas', 'sadc',
+            # Diaspora terms
+            'african diaspora', 'african immigrant', 'african community', 'nigerian diaspora',
+            'ghanaian diaspora', 'kenyan diaspora', 'south african diaspora', 'ethiopian diaspora',
+            # Major African cities
+            'lagos', 'cairo', 'johannesburg', 'cape town', 'nairobi', 'casablanca', 'tunis',
+            'algiers', 'accra', 'addis ababa', 'khartoum', 'kampala', 'dar es salaam', 'harare',
+            'gaborone', 'windhoek', 'lusaka', 'maputo', 'antananarivo', 'yaounde', 'abidjan',
+            'dakar', 'bamako', 'ouagadougou', 'niamey', 'ndjamena', 'bangui', 'kinshasa',
+            'brazzaville', 'libreville', 'malabo', 'praia', 'banjul', 'bissau', 'conakry',
+            'freetown', 'monrovia', 'lome', 'porto novo', 'kigali', 'bujumbura', 'djibouti city',
+            'asmara', 'mogadishu', 'moroni', 'port louis', 'victoria', 'maseru', 'mbabane',
+            'luanda'
+        ]
     
     def get_related_news(self, query: str, exclude_url: str = None, max_results: int = 2) -> List[Dict[str, str]]:
-        """Extract related news from Google News RSS, excluding the original URL."""
+        """Extract Africa-related news from Google News RSS, excluding the original URL."""
         try:
-            # Clean and encode the query
+            # Clean and encode the query, add Africa context
             clean_query = re.sub(r'[^\w\s]', '', query)
-            encoded_query = urllib.parse.quote(clean_query)
+            # Enhance query with Africa-related terms for better filtering
+            africa_enhanced_query = f"{clean_query} Africa OR African"
+            encoded_query = urllib.parse.quote(africa_enhanced_query)
             
             # Construct Google News RSS URL
             params = {
-                'q': clean_query,
+                'q': africa_enhanced_query,
                 'hl': 'en-US',
                 'gl': 'US',
                 'ceid': 'US:en'
@@ -130,6 +162,7 @@ class GoogleNewsExtractor:
                 for item in items:
                     title = item.find('title')
                     link = item.find('link')
+                    description = item.find('description')
                     
                     if title and link:
                         # Extract actual URL from Google redirect
@@ -143,14 +176,19 @@ class GoogleNewsExtractor:
                         if exclude_url and self._same_domain(actual_url, exclude_url):
                             continue
                         
-                        news_links.append({
-                            'title': title.text.strip(),
-                            'url': actual_url
-                        })
+                        # Check if the news item is Africa-related
+                        title_text = title.text.strip()
+                        description_text = description.text.strip() if description else ""
                         
-                        # Stop when we have enough results
-                        if len(news_links) >= max_results:
-                            break
+                        if self._is_africa_related(title_text, description_text):
+                            news_links.append({
+                                'title': title_text,
+                                'url': actual_url
+                            })
+                            
+                            # Stop when we have enough results
+                            if len(news_links) >= max_results:
+                                break
                 
                 return news_links
             else:
@@ -159,6 +197,18 @@ class GoogleNewsExtractor:
         except Exception as e:
             logger.error(f"Error fetching Google News: {e}")
             return []
+    
+    def _is_africa_related(self, title: str, description: str) -> bool:
+        """Check if news item is related to Africa or African diaspora."""
+        # Combine title and description for checking
+        combined_text = f"{title} {description}".lower()
+        
+        # Check against Africa keywords
+        for keyword in self.africa_keywords:
+            if keyword.lower() in combined_text:
+                return True
+        
+        return False
     
     def _urls_match(self, url1: str, url2: str) -> bool:
         """Check if two URLs are essentially the same."""
@@ -199,7 +249,7 @@ class SumySummarizer:
         self.tokenizer = SimpleTokenizer(self.language)
 
     def generate_summary(self, content: str) -> Optional[str]:
-        """Generates a concise summary using Sumy with custom tokenizer."""
+        """Generates a concise summary using Sumy with custom tokenizer and liberal length requirements."""
         try:
             # Clean content to remove promotional text and ads
             cleaned_content = self._clean_content(content)
@@ -209,15 +259,15 @@ class SumySummarizer:
             summarizer = LsaSummarizer(Stemmer(self.language))
             summarizer.stop_words = get_stop_words(self.language)
 
-            # Start with more sentences to reach 100-120 word target
-            initial_sentence_count = 6
+            # Start with more sentences to reach target word count
+            initial_sentence_count = 5
             sentences = summarizer(parser.document, initial_sentence_count)
             summary = ' '.join(str(sentence) for sentence in sentences)
 
-            # Adjust summary length to meet 100-120 word requirement
+            # Adjust summary length with liberal thresholds for complete summaries
             summary = self._adjust_summary_length(summary, cleaned_content)
 
-            if summary and len(summary.split()) >= 100:
+            if summary and len(summary.split()) >= Config.MIN_SUMMARY_WORDS:
                 return summary
             else:
                 logger.warning("Summary generation failed or too short.")
@@ -257,36 +307,82 @@ class SumySummarizer:
         return cleaned
 
     def _adjust_summary_length(self, summary: str, original_content: str) -> str:
-        """Adjust summary to be between 100-110 words and fix grammar."""
+        """Adjust summary to be complete with liberal length requirements and avoid mid-sentence cuts."""
         words = summary.split()
         word_count = len(words)
         
-        if 100 <= word_count <= 110:
+        # Check if summary is within acceptable range
+        if Config.MIN_SUMMARY_WORDS <= word_count <= Config.MAX_SUMMARY_WORDS:
             return self._fix_grammar(summary)
-        elif word_count < 100:
+        elif word_count < Config.MIN_SUMMARY_WORDS:
             # Try to get more content by increasing sentence count
             try:
                 parser = PlaintextParser.from_string(original_content, self.tokenizer)
                 summarizer = LsaSummarizer(Stemmer(self.language))
                 summarizer.stop_words = get_stop_words(self.language)
                 
-                # Increase sentence count to get more words
-                sentences = summarizer(parser.document, 8)
-                extended_summary = ' '.join(str(sentence) for sentence in sentences)
-                extended_words = extended_summary.split()
+                # Gradually increase sentence count to get more words
+                for sentence_count in [6, 7, 8, 9, 10]:
+                    sentences = summarizer(parser.document, sentence_count)
+                    extended_summary = ' '.join(str(sentence) for sentence in sentences)
+                    extended_words = extended_summary.split()
+                    
+                    if len(extended_words) >= Config.MIN_SUMMARY_WORDS:
+                        # Check if we need to trim, but ensure complete sentences
+                        if len(extended_words) > Config.MAX_SUMMARY_WORDS:
+                            final_summary = self._trim_to_complete_sentences(extended_summary, Config.MAX_SUMMARY_WORDS)
+                        else:
+                            final_summary = extended_summary
+                        return self._fix_grammar(final_summary)
                 
-                if len(extended_words) >= 100:
-                    # Trim to 110 words if too long
-                    final_summary = ' '.join(extended_words[:110])
-                    return self._fix_grammar(final_summary)
-                else:
-                    return self._fix_grammar(extended_summary)
+                # If we still don't have enough words, return what we have
+                return self._fix_grammar(summary)
             except:
                 return self._fix_grammar(summary)
         else:
-            # Trim to 110 words
-            trimmed_summary = ' '.join(words[:110])
+            # Trim to complete sentences within MAX_SUMMARY_WORDS
+            trimmed_summary = self._trim_to_complete_sentences(summary, Config.MAX_SUMMARY_WORDS)
             return self._fix_grammar(trimmed_summary)
+
+    def _trim_to_complete_sentences(self, text: str, max_words: int) -> str:
+        """Trim text to complete sentences within the word limit."""
+        words = text.split()
+        if len(words) <= max_words:
+            return text
+        
+        # Find the last complete sentence within the word limit
+        truncated_text = ' '.join(words[:max_words])
+        
+        # Find the last sentence ending before the word limit
+        sentence_endings = ['.', '!', '?']
+        last_sentence_end = -1
+        
+        for i in range(len(truncated_text) - 1, -1, -1):
+            if truncated_text[i] in sentence_endings:
+                # Make sure this isn't an abbreviation or decimal
+                if i > 0 and truncated_text[i-1].isalpha():
+                    last_sentence_end = i
+                    break
+        
+        if last_sentence_end > 0:
+            # Return text up to the last complete sentence
+            complete_sentence_text = truncated_text[:last_sentence_end + 1]
+            # Ensure we haven't made it too short
+            if len(complete_sentence_text.split()) >= Config.MIN_SUMMARY_WORDS * 0.8:  # Allow 20% flexibility
+                return complete_sentence_text
+        
+        # If we can't find a good sentence break, return the original truncated text
+        # but try to end at a natural break point
+        truncated_text = ' '.join(words[:max_words])
+        
+        # Look for natural break points (commas, semicolons) near the end
+        for i in range(len(truncated_text) - 1, max(0, len(truncated_text) - 50), -1):
+            if truncated_text[i] in [',', ';']:
+                potential_text = truncated_text[:i + 1]
+                if len(potential_text.split()) >= Config.MIN_SUMMARY_WORDS * 0.9:
+                    return potential_text
+        
+        return truncated_text
     
     def _fix_grammar(self, text: str) -> str:
         """Fix common grammatical errors in the summary."""
@@ -318,57 +414,6 @@ class SumySummarizer:
             result += '.'
         
         return result
-    
-    def _improve_fluency(self, text: str) -> str:
-        """Improve the fluency and coherence of the summary."""
-        if not text:
-            return text
-            
-        # Split into sentences for processing
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        improved_sentences = []
-        
-        for i, sentence in enumerate(sentences):
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-                
-            # Add transition words for better flow
-            if i > 0 and len(improved_sentences) > 0:
-                # Check if sentence needs a transition
-                prev_sentence = improved_sentences[-1].lower()
-                current_sentence = sentence.lower()
-                
-                # Add appropriate transitions
-                if 'however' not in current_sentence and 'but' not in current_sentence:
-                    if any(word in prev_sentence for word in ['increase', 'rise', 'grow', 'up']):
-                        if any(word in current_sentence for word in ['decrease', 'fall', 'drop', 'down']):
-                            sentence = "However, " + sentence.lower()
-                    elif any(word in prev_sentence for word in ['said', 'stated', 'announced']):
-                        if not any(word in current_sentence for word in ['additionally', 'furthermore', 'meanwhile']):
-                            sentence = "Additionally, " + sentence.lower()
-            
-            # Fix common fluency issues
-            sentence = re.sub(r'\b(The|A|An)\s+(The|A|An)\b', r'\1', sentence, flags=re.IGNORECASE)
-            sentence = re.sub(r'\b(is|was|are|were)\s+(is|was|are|were)\b', r'\1', sentence, flags=re.IGNORECASE)
-            
-            # Ensure proper capitalization
-            sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
-            
-            improved_sentences.append(sentence)
-        
-        # Join with proper spacing
-        result = ' '.join(improved_sentences)
-        
-        # Final cleanup
-        result = re.sub(r'\s+', ' ', result).strip()
-        
-        # Ensure proper ending
-        if result and not result.endswith(('.', '!', '?')):
-            result += '.'
-            
-        return result
-    
 
 # Reddit Bot class
 class RedditBot:
@@ -421,19 +466,20 @@ class RedditBot:
                 logger.info(f"Extracted content of length: {len(content)} characters")
                 summary = self.summarizer.generate_summary(content)
             
-            # Get related news (excluding the original submission URL)
+            # Get related Africa-focused news (excluding the original submission URL)
             related_news = self.news_extractor.get_related_news(submission.title, submission.url)
             
             # Post comment if we have summary or related news
             if summary or related_news:
                 if summary:
-                    logger.info(f"Generated summary: {summary[:60]}...")
+                    word_count = len(summary.split())
+                    logger.info(f"Generated summary with {word_count} words: {summary[:60]}...")
                 else:
                     logger.info("No content extracted, but found related news")
                     
                 self._post_comment(submission, summary, related_news)
             else:
-                logger.warning("Both summary generation and news extraction failed")
+                logger.warning("Both summary generation and Africa-related news extraction failed")
                 
         except Exception as e:
             logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
@@ -488,7 +534,7 @@ class RedditBot:
                 comment_parts.append("")
                 comment_parts.append("")
         else:
-            comment_parts.append("🔗 No related news sources found at this time.")
+            comment_parts.append("🔗 No Africa-related news sources found at this time.")
             comment_parts.append("")
             comment_parts.append("")
         
