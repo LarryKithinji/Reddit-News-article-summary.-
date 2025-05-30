@@ -385,11 +385,32 @@ class SumySummarizer:
         return truncated_text
     
     def _fix_grammar(self, text: str) -> str:
-        """Fix common grammatical errors in the summary."""
-        # Fix spacing issues
+        """Fix common grammatical errors and punctuation issues in the summary."""
+        if not text:
+            return text
+            
+        # Initial cleanup - fix spacing issues
         text = re.sub(r'\s+', ' ', text).strip()
         
-        # Ensure proper sentence capitalization
+        # Fix common punctuation spacing issues first
+        text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
+        text = re.sub(r'([.!?,:;])\s*([A-Za-z])', r'\1 \2', text)  # Add space after punctuation
+        text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
+        
+        # Fix multiple punctuation marks
+        text = re.sub(r'[.]{2,}', '.', text)  # Multiple periods to single
+        text = re.sub(r'[!]{2,}', '!', text)  # Multiple exclamations to single
+        text = re.sub(r'[?]{2,}', '?', text)  # Multiple questions to single
+        
+        # Fix comma spacing
+        text = re.sub(r'\s*,\s*', ', ', text)  # Standardize comma spacing
+        text = re.sub(r',\s*,', ',', text)  # Remove duplicate commas
+        
+        # Fix semicolon and colon spacing
+        text = re.sub(r'\s*;\s*', '; ', text)  # Standardize semicolon spacing
+        text = re.sub(r'\s*:\s*', ': ', text)  # Standardize colon spacing
+        
+        # Split into sentences for proper capitalization
         sentences = re.split(r'(?<=[.!?])\s+', text)
         fixed_sentences = []
         
@@ -399,21 +420,62 @@ class SumySummarizer:
                 # Capitalize first letter of each sentence
                 sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
                 
-                # Fix common issues
-                sentence = re.sub(r'\s+([.!?,:;])', r'\1', sentence)  # Remove space before punctuation
-                sentence = re.sub(r'([.!?])\s*([a-z])', r'\1 \2', sentence)  # Add space after punctuation
-                sentence = re.sub(r'\s+', ' ', sentence)  # Multiple spaces to single
+                # Fix specific punctuation issues within sentences
+                sentence = self._fix_sentence_punctuation(sentence)
                 
                 fixed_sentences.append(sentence)
         
         # Join sentences properly
         result = ' '.join(fixed_sentences)
         
+        # Final cleanup
+        result = re.sub(r'\s+', ' ', result).strip()  # Final space cleanup
+        
         # Ensure proper ending punctuation
         if result and not result.endswith(('.', '!', '?')):
-            result += '.'
+            # Check if the last word suggests it should be a question
+            if result.lower().strip().split()[-1] in ['who', 'what', 'when', 'where', 'why', 'how']:
+                result += '?'
+            else:
+                result += '.'
+        
+        # Fix any remaining spacing issues around punctuation
+        result = re.sub(r'\s+([.!?,:;])', r'\1', result)
+        result = re.sub(r'([.!?,:;])([A-Za-z])', r'\1 \2', result)
         
         return result
+    
+    def _fix_sentence_punctuation(self, sentence: str) -> str:
+        """Fix punctuation issues within a single sentence."""
+        # Fix apostrophes and contractions
+        sentence = re.sub(r"\s+'([sStTdDmMrReEvV])\b", r"'\1", sentence)  # Fix spaced contractions
+        sentence = re.sub(r"\b([a-zA-Z]+)\s+'\s*([sStT])\b", r"\1'\2", sentence)  # Fix possessives
+        
+        # Fix quotation marks
+        sentence = re.sub(r'\s+"([^"]*?)"\s*', r' "\1" ', sentence)  # Standard quote spacing
+        sentence = re.sub(r"(\w)\s+'", r"\1'", sentence)  # Fix spaced single quotes
+        
+        # Fix parentheses spacing
+        sentence = re.sub(r'\s*\(\s*', ' (', sentence)
+        sentence = re.sub(r'\s*\)\s*', ') ', sentence)
+        sentence = re.sub(r'^\s*\(\s*', '(', sentence)  # Start of sentence
+        
+        # Fix hyphen and dash spacing
+        sentence = re.sub(r'\s*-\s*', '-', sentence)  # Remove spaces around hyphens in compound words
+        sentence = re.sub(r'(\w)\s*--\s*(\w)', r'\1 - \2', sentence)  # Fix em dashes
+        
+        # Fix ellipsis
+        sentence = re.sub(r'\.{3,}', '...', sentence)
+        sentence = re.sub(r'\s*\.\.\.\s*', '... ', sentence)
+        
+        # Fix numbers and decimals
+        sentence = re.sub(r'(\d)\s*\.\s*(\d)', r'\1.\2', sentence)  # Fix decimal points
+        sentence = re.sub(r'(\d)\s*,\s*(\d{3})', r'\1,\2', sentence)  # Fix number formatting
+        
+        # Clean up any double spaces created
+        sentence = re.sub(r'\s+', ' ', sentence)
+        
+        return sentence.strip()
 
 # Reddit Bot class
 class RedditBot:
