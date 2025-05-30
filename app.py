@@ -1,5 +1,15 @@
-import praw import requests import logging import time from typing import Optional from bs4 import BeautifulSoup from sumy.parsers.plaintext import PlaintextParser from sumy.nlp.tokenizers import Tokenizer from sumy.summarizers.lsa import LsaSummarizer from sumy.nlp.stemmers import Stemmer from sumy.utils import get_stop_words from urllib.parse import urlparse
-
+import praw
+import requests
+import logging
+import time
+from typing import Optional
+from bs4 import BeautifulSoup
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
+from urllib.parse import urlparse
 Logging setup
 
 logging.basicConfig( level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", handlers=[ logging.FileHandler("reddit_bot.log", mode="a", encoding="utf-8"), logging.StreamHandler() ] ) logger = logging.getLogger(name)
