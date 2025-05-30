@@ -3,12 +3,13 @@ import requests
 import logging
 import time
 import re
-from typing import Optional
+from typing import Optional, List, Dict
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.summarizers.lsa import LsaSummarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
+import urllib.parse
 
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
@@ -93,6 +94,70 @@ class ContentExtractor:
             logger.error(f"Error fetching or parsing content: {e}")
             return None
 
+# Google News extractor class
+class GoogleNewsExtractor:
+    def __init__(self):
+        self.base_url = "https://news.google.com/rss/search"
+    
+    def get_related_news(self, query: str, max_results: int = 2) -> List[Dict[str, str]]:
+        """Extract related news from Google News RSS."""
+        try:
+            # Clean and encode the query
+            clean_query = re.sub(r'[^\w\s]', '', query)
+            encoded_query = urllib.parse.quote(clean_query)
+            
+            # Construct Google News RSS URL
+            params = {
+                'q': clean_query,
+                'hl': 'en-US',
+                'gl': 'US',
+                'ceid': 'US:en'
+            }
+            
+            url = f"{self.base_url}?{'&'.join([f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items()])}"
+            
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.content, 'xml')
+                items = soup.find_all('item')
+                
+                news_links = []
+                for item in items[:max_results]:
+                    title = item.find('title')
+                    link = item.find('link')
+                    
+                    if title and link:
+                        # Extract actual URL from Google redirect
+                        actual_url = self._extract_actual_url(link.text)
+                        news_links.append({
+                            'title': title.text.strip(),
+                            'url': actual_url
+                        })
+                
+                return news_links
+            else:
+                logger.warning(f"Failed to fetch Google News. Status code: {response.status_code}")
+                return []
+        except Exception as e:
+            logger.error(f"Error fetching Google News: {e}")
+            return []
+    
+    def _extract_actual_url(self, google_url: str) -> str:
+        """Extract actual URL from Google redirect URL."""
+        try:
+            # Google News URLs often contain the actual URL as a parameter
+            if 'url=' in google_url:
+                return urllib.parse.unquote(google_url.split('url=')[1].split('&')[0])
+            else:
+                return google_url
+        except:
+            return google_url
+
 # Sumy Summarizer class
 class SumySummarizer:
     def __init__(self):
@@ -159,12 +224,12 @@ class SumySummarizer:
         return cleaned
 
     def _adjust_summary_length(self, summary: str, original_content: str) -> str:
-        """Adjust summary to be between 100-120 words."""
+        """Adjust summary to be between 100-110 words and fix grammar."""
         words = summary.split()
         word_count = len(words)
         
-        if 100 <= word_count <= 120:
-            return summary
+        if 100 <= word_count <= 110:
+            return self._fix_grammar(summary)
         elif word_count < 100:
             # Try to get more content by increasing sentence count
             try:
@@ -178,15 +243,48 @@ class SumySummarizer:
                 extended_words = extended_summary.split()
                 
                 if len(extended_words) >= 100:
-                    # Trim to 120 words if too long
-                    return ' '.join(extended_words[:120])
+                    # Trim to 110 words if too long
+                    final_summary = ' '.join(extended_words[:110])
+                    return self._fix_grammar(final_summary)
                 else:
-                    return extended_summary
+                    return self._fix_grammar(extended_summary)
             except:
-                return summary
+                return self._fix_grammar(summary)
         else:
-            # Trim to 120 words
-            return ' '.join(words[:120])
+            # Trim to 110 words
+            trimmed_summary = ' '.join(words[:110])
+            return self._fix_grammar(trimmed_summary)
+    
+    def _fix_grammar(self, text: str) -> str:
+        """Fix common grammatical errors in the summary."""
+        # Fix spacing issues
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Ensure proper sentence capitalization
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        fixed_sentences = []
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if sentence:
+                # Capitalize first letter of each sentence
+                sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
+                
+                # Fix common issues
+                sentence = re.sub(r'\s+([.!?,:;])', r'\1', sentence)  # Remove space before punctuation
+                sentence = re.sub(r'([.!?])\s*([a-z])', r'\1 \2', sentence)  # Add space after punctuation
+                sentence = re.sub(r'\s+', ' ', sentence)  # Multiple spaces to single
+                
+                fixed_sentences.append(sentence)
+        
+        # Join sentences properly
+        result = ' '.join(fixed_sentences)
+        
+        # Ensure proper ending punctuation
+        if result and not result.endswith(('.', '!', '?')):
+            result += '.'
+        
+        return result
     
 
 # Reddit Bot class
@@ -194,6 +292,7 @@ class RedditBot:
     def __init__(self):
         self.extractor = ContentExtractor()
         self.summarizer = SumySummarizer()
+        self.news_extractor = GoogleNewsExtractor()
         self.reddit = praw.Reddit(
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
@@ -230,42 +329,91 @@ class RedditBot:
         """Processes a single submission, extracts content, and posts a summary."""
         try:
             logger.info(f"Processing submission: {submission.title} (ID: {submission.id})")
+            
+            # Extract content from the submission URL
             content = self.extractor.extract_content(submission.url)
-
+            summary = None
+            
             if content:
                 logger.info(f"Extracted content of length: {len(content)} characters")
                 summary = self.summarizer.generate_summary(content)
-
+            
+            # Get related news (works for both news articles and other posts)
+            related_news = self.news_extractor.get_related_news(submission.title)
+            
+            # Post comment if we have summary or related news
+            if summary or related_news:
                 if summary:
-                    logger.info(f"Generated summary: {summary[:60]}...")  # Log first 60 chars
-                    self._post_comment(submission, summary)
+                    logger.info(f"Generated summary: {summary[:60]}...")
                 else:
-                    logger.warning("Summary generation failed")
+                    logger.info("No content extracted, but found related news")
+                    
+                self._post_comment(submission, summary, related_news)
             else:
-                logger.warning("Content extraction failed")
+                logger.warning("Both summary generation and news extraction failed")
+                
         except Exception as e:
             logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
 
-    def _post_comment(self, submission, summary: str):
-        """Posts a comment on the submission with the generated summary."""
+    def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
+        """Posts a comment on the submission with the generated summary and related news."""
         try:
             # Format the comment according to the specified template
-            formatted_comment = self._format_comment(submission.title, summary)
+            formatted_comment = self._format_comment(submission.title, summary, related_news)
             submission.reply(formatted_comment)
             logger.info(f"Comment posted successfully on submission {submission.id}")
             time.sleep(Config.COMMENT_DELAY)
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
 
-    def _format_comment(self, title: str, summary: str) -> str:
+    def _format_comment(self, title: str, summary: Optional[str], related_news: List[Dict[str, str]]) -> str:
         """Format the comment according to the specified template."""
-        formatted_comment = f"""**Summary for "{title}"**
-
-{summary}
-
-^This ^is ^a ^TLDR ^bot ^for ^r/AfricaVoice!"""
         
-        return formatted_comment
+        # Build the comment parts
+        comment_parts = []
+        
+        # Header
+        comment_parts.append(f'📰 **Summary for:** "{title}"')
+        comment_parts.append("")  # Empty line
+        comment_parts.append("---")
+        comment_parts.append("")
+        
+        # Summary section (if available)
+        if summary:
+            comment_parts.append("💡 **Summary:**")
+            comment_parts.append("")
+            comment_parts.append(f"> {summary}")
+            comment_parts.append("")
+            comment_parts.append("")
+        else:
+            comment_parts.append("💡 **Summary:**")
+            comment_parts.append("")
+            comment_parts.append("> No content could be extracted from the original link for summarization.")
+            comment_parts.append("")
+            comment_parts.append("")
+        
+        comment_parts.append("---")
+        comment_parts.append("")
+        
+        # Related news section
+        comment_parts.append("🤝 **Collaborative News Sources:**")
+        comment_parts.append("")
+        
+        if related_news:
+            for news_item in related_news:
+                comment_parts.append(f"🔗 [{news_item['title']}]({news_item['url']})")
+                comment_parts.append("")
+                comment_parts.append("")
+        else:
+            comment_parts.append("🔗 No related news sources found at this time.")
+            comment_parts.append("")
+            comment_parts.append("")
+        
+        comment_parts.append("---")
+        comment_parts.append("")
+        comment_parts.append("🛠️ **This is a bot for r/AfricaVoice!**")
+        
+        return '\n'.join(comment_parts)
 
 # Run the bot
 if __name__ == "__main__":
