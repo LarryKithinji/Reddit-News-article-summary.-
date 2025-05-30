@@ -76,45 +76,15 @@ class ContentExtractor:
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
-                # Remove unwanted elements that contain promotional content
-                for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form']):
-                    element.decompose()
-                
-                # Remove elements with promotional/advertising classes/ids
-                promotional_selectors = [
-                    '[class*="ad"]', '[id*="ad"]', '[class*="advertisement"]',
-                    '[class*="promo"]', '[class*="sponsor"]', '[class*="related"]',
-                    '[class*="author-bio"]', '[class*="author-info"]', '[class*="share"]',
-                    '[class*="social"]', '[class*="newsletter"]', '[class*="subscribe"]'
-                ]
-                
-                for selector in promotional_selectors:
-                    for element in soup.select(selector):
-                        element.decompose()
-                
-                # Try to find main article content first
-                article_content = None
-                
-                # Look for common article containers
-                article_selectors = ['article', 'main', '[class*="content"]', '[class*="article"]', '[class*="post"]']
-                for selector in article_selectors:
-                    article_element = soup.select_one(selector)
-                    if article_element:
-                        paragraphs = article_element.find_all('p')
-                        if len(paragraphs) >= 2:  # Must have at least 2 paragraphs
-                            article_content = ' '.join(p.get_text(strip=True) for p in paragraphs)
-                            break
-                
-                # Fallback to all paragraphs if no article container found
-                if not article_content:
-                    paragraphs = soup.find_all('p')
-                    article_content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+                # Extract main content by focusing on paragraphs
+                paragraphs = soup.find_all('p')
+                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
 
                 # Validate extracted content length
-                if article_content and len(article_content) > 200:  # Increased minimum length
-                    return article_content
+                if len(content) > 100:
+                    return content
                 else:
-                    logger.warning(f"Content too short after parsing: {len(article_content) if article_content else 0} characters")
+                    logger.warning(f"Content too short after parsing: {len(content)} characters")
                     return None
             else:
                 logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
@@ -133,23 +103,91 @@ class SumySummarizer:
     def generate_summary(self, content: str) -> Optional[str]:
         """Generates a concise summary using Sumy with custom tokenizer."""
         try:
+            # Clean content to remove promotional text and ads
+            cleaned_content = self._clean_content(content)
+            
             # Use our custom tokenizer instead of NLTK
-            parser = PlaintextParser.from_string(content, self.tokenizer)
+            parser = PlaintextParser.from_string(cleaned_content, self.tokenizer)
             summarizer = LsaSummarizer(Stemmer(self.language))
             summarizer.stop_words = get_stop_words(self.language)
 
-            # Extract summary sentences
-            sentences = summarizer(parser.document, self.sentence_count)
+            # Start with more sentences to reach 100-120 word target
+            initial_sentence_count = 6
+            sentences = summarizer(parser.document, initial_sentence_count)
             summary = ' '.join(str(sentence) for sentence in sentences)
 
-            if summary:
+            # Adjust summary length to meet 100-120 word requirement
+            summary = self._adjust_summary_length(summary, cleaned_content)
+
+            if summary and len(summary.split()) >= 100:
                 return summary
             else:
-                logger.warning("Summary generation failed. Sumy returned no content.")
+                logger.warning("Summary generation failed or too short.")
                 return None
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
             return None
+
+    def _clean_content(self, content: str) -> str:
+        """Remove promotional content and ads from the text."""
+        # Remove common promotional phrases
+        promotional_phrases = [
+            r'subscribe to our newsletter',
+            r'follow us on',
+            r'share this article',
+            r'read more at',
+            r'visit our website',
+            r'click here',
+            r'advertisement',
+            r'sponsored content',
+            r'about the author',
+            r'related articles',
+            r'trending now',
+            r'popular posts'
+        ]
+        
+        cleaned = content
+        for phrase in promotional_phrases:
+            cleaned = re.sub(phrase, '', cleaned, flags=re.IGNORECASE)
+        
+        # Remove URLs
+        cleaned = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', cleaned)
+        
+        # Remove excessive whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        return cleaned
+
+    def _adjust_summary_length(self, summary: str, original_content: str) -> str:
+        """Adjust summary to be between 100-120 words."""
+        words = summary.split()
+        word_count = len(words)
+        
+        if 100 <= word_count <= 120:
+            return summary
+        elif word_count < 100:
+            # Try to get more content by increasing sentence count
+            try:
+                parser = PlaintextParser.from_string(original_content, self.tokenizer)
+                summarizer = LsaSummarizer(Stemmer(self.language))
+                summarizer.stop_words = get_stop_words(self.language)
+                
+                # Increase sentence count to get more words
+                sentences = summarizer(parser.document, 8)
+                extended_summary = ' '.join(str(sentence) for sentence in sentences)
+                extended_words = extended_summary.split()
+                
+                if len(extended_words) >= 100:
+                    # Trim to 120 words if too long
+                    return ' '.join(extended_words[:120])
+                else:
+                    return extended_summary
+            except:
+                return summary
+        else:
+            # Trim to 120 words
+            return ' '.join(words[:120])
+    
 
 # Reddit Bot class
 class RedditBot:
@@ -200,12 +238,7 @@ class RedditBot:
 
                 if summary:
                     logger.info(f"Generated summary: {summary[:60]}...")  # Log first 60 chars
-                    # Check if summary meets minimum word count, if not, skip posting
-                    word_count = len(summary.split())
-                    if word_count >= 30:  # Minimum threshold for meaningful summary
-                        self._post_comment(submission, summary)
-                    else:
-                        logger.warning(f"Summary too short ({word_count} words), skipping post")
+                    self._post_comment(submission, summary)
                 else:
                     logger.warning("Summary generation failed")
             else:
@@ -223,26 +256,14 @@ class RedditBot:
             time.sleep(Config.COMMENT_DELAY)
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
-    
+
     def _format_comment(self, title: str, summary: str) -> str:
-        """Formats the comment according to the specified template."""
-        # Ensure summary is within word count limits (75-100 words)
-        words = summary.split()
-        if len(words) < 75:
-            # If too short, keep the original summary
-            formatted_summary = summary
-        elif len(words) > 100:
-            # If too long, truncate to 100 words
-            formatted_summary = ' '.join(words[:100])
-        else:
-            formatted_summary = summary
-        
-        # Create the formatted comment
-        formatted_comment = f"""TLDR for "{title}"
+        """Format the comment according to the specified template."""
+        formatted_comment = f"""**Summary for "{title}"**
 
-{formatted_summary}
+{summary}
 
-*This *is *a *TLDR *bot *for *r/AfricaVoice!"""
+^This ^is ^a ^TLDR ^bot ^for ^r/AfricaVoice!"""
         
         return formatted_comment
 
