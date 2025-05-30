@@ -2,17 +2,44 @@ import praw
 import requests
 import logging
 import time
+import re
 from typing import Optional
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 
-# 🔽 Fix: ensure punkt tokenizer is downloaded
-import nltk
-nltk.download('punkt', quiet=True)
+# Simple tokenizer to replace NLTK dependency
+class SimpleTokenizer:
+    """A simple tokenizer that splits text into sentences without NLTK dependency."""
+    
+    def __init__(self, language="english"):
+        self.language = language
+        # Common sentence ending patterns
+        self.sentence_endings = re.compile(r'[.!?]+\s+')
+    
+    def to_sentences(self, text):
+        """Split text into sentences using regex patterns."""
+        # Clean up the text
+        text = text.strip()
+        if not text:
+            return []
+        
+        # Split by sentence endings but keep the endings
+        sentences = self.sentence_endings.split(text)
+        
+        # Filter out empty sentences and very short ones
+        sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+        
+        return sentences
+    
+    def to_words(self, sentence):
+        """Split sentence into words."""
+        # Simple word tokenization
+        words = re.findall(r'\b\w+\b', sentence.lower())
+        return words
+
 # Logging setup
 logging.basicConfig(
     level=logging.INFO,
@@ -71,11 +98,13 @@ class SumySummarizer:
     def __init__(self):
         self.language = Config.LANGUAGE
         self.sentence_count = Config.SENTENCES_COUNT
+        self.tokenizer = SimpleTokenizer(self.language)
 
     def generate_summary(self, content: str) -> Optional[str]:
-        """Generates a concise summary using Sumy."""
+        """Generates a concise summary using Sumy with custom tokenizer."""
         try:
-            parser = PlaintextParser.from_string(content, Tokenizer(self.language))
+            # Use our custom tokenizer instead of NLTK
+            parser = PlaintextParser.from_string(content, self.tokenizer)
             summarizer = LsaSummarizer(Stemmer(self.language))
             summarizer.stop_words = get_stop_words(self.language)
 
