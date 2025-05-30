@@ -99,8 +99,8 @@ class GoogleNewsExtractor:
     def __init__(self):
         self.base_url = "https://news.google.com/rss/search"
     
-    def get_related_news(self, query: str, max_results: int = 2) -> List[Dict[str, str]]:
-        """Extract related news from Google News RSS."""
+    def get_related_news(self, query: str, exclude_url: str = None, max_results: int = 2) -> List[Dict[str, str]]:
+        """Extract related news from Google News RSS, excluding the original URL."""
         try:
             # Clean and encode the query
             clean_query = re.sub(r'[^\w\s]', '', query)
@@ -127,17 +127,30 @@ class GoogleNewsExtractor:
                 items = soup.find_all('item')
                 
                 news_links = []
-                for item in items[:max_results]:
+                for item in items:
                     title = item.find('title')
                     link = item.find('link')
                     
                     if title and link:
                         # Extract actual URL from Google redirect
                         actual_url = self._extract_actual_url(link.text)
+                        
+                        # Skip if this is the same as the original submission URL
+                        if exclude_url and self._urls_match(actual_url, exclude_url):
+                            continue
+                            
+                        # Skip if URL contains the original domain to avoid duplicates
+                        if exclude_url and self._same_domain(actual_url, exclude_url):
+                            continue
+                        
                         news_links.append({
                             'title': title.text.strip(),
                             'url': actual_url
                         })
+                        
+                        # Stop when we have enough results
+                        if len(news_links) >= max_results:
+                            break
                 
                 return news_links
             else:
@@ -146,6 +159,26 @@ class GoogleNewsExtractor:
         except Exception as e:
             logger.error(f"Error fetching Google News: {e}")
             return []
+    
+    def _urls_match(self, url1: str, url2: str) -> bool:
+        """Check if two URLs are essentially the same."""
+        try:
+            # Normalize URLs for comparison
+            url1_clean = re.sub(r'^https?://(www\.)?', '', url1.lower().strip('/'))
+            url2_clean = re.sub(r'^https?://(www\.)?', '', url2.lower().strip('/'))
+            return url1_clean == url2_clean
+        except:
+            return False
+    
+    def _same_domain(self, url1: str, url2: str) -> bool:
+        """Check if two URLs are from the same domain."""
+        try:
+            from urllib.parse import urlparse
+            domain1 = urlparse(url1).netloc.lower().replace('www.', '')
+            domain2 = urlparse(url2).netloc.lower().replace('www.', '')
+            return domain1 == domain2
+        except:
+            return False
     
     def _extract_actual_url(self, google_url: str) -> str:
         """Extract actual URL from Google redirect URL."""
@@ -286,6 +319,56 @@ class SumySummarizer:
         
         return result
     
+    def _improve_fluency(self, text: str) -> str:
+        """Improve the fluency and coherence of the summary."""
+        if not text:
+            return text
+            
+        # Split into sentences for processing
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        improved_sentences = []
+        
+        for i, sentence in enumerate(sentences):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Add transition words for better flow
+            if i > 0 and len(improved_sentences) > 0:
+                # Check if sentence needs a transition
+                prev_sentence = improved_sentences[-1].lower()
+                current_sentence = sentence.lower()
+                
+                # Add appropriate transitions
+                if 'however' not in current_sentence and 'but' not in current_sentence:
+                    if any(word in prev_sentence for word in ['increase', 'rise', 'grow', 'up']):
+                        if any(word in current_sentence for word in ['decrease', 'fall', 'drop', 'down']):
+                            sentence = "However, " + sentence.lower()
+                    elif any(word in prev_sentence for word in ['said', 'stated', 'announced']):
+                        if not any(word in current_sentence for word in ['additionally', 'furthermore', 'meanwhile']):
+                            sentence = "Additionally, " + sentence.lower()
+            
+            # Fix common fluency issues
+            sentence = re.sub(r'\b(The|A|An)\s+(The|A|An)\b', r'\1', sentence, flags=re.IGNORECASE)
+            sentence = re.sub(r'\b(is|was|are|were)\s+(is|was|are|were)\b', r'\1', sentence, flags=re.IGNORECASE)
+            
+            # Ensure proper capitalization
+            sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
+            
+            improved_sentences.append(sentence)
+        
+        # Join with proper spacing
+        result = ' '.join(improved_sentences)
+        
+        # Final cleanup
+        result = re.sub(r'\s+', ' ', result).strip()
+        
+        # Ensure proper ending
+        if result and not result.endswith(('.', '!', '?')):
+            result += '.'
+            
+        return result
+    
 
 # Reddit Bot class
 class RedditBot:
@@ -338,8 +421,8 @@ class RedditBot:
                 logger.info(f"Extracted content of length: {len(content)} characters")
                 summary = self.summarizer.generate_summary(content)
             
-            # Get related news (works for both news articles and other posts)
-            related_news = self.news_extractor.get_related_news(submission.title)
+            # Get related news (excluding the original submission URL)
+            related_news = self.news_extractor.get_related_news(submission.title, submission.url)
             
             # Post comment if we have summary or related news
             if summary or related_news:
@@ -396,7 +479,7 @@ class RedditBot:
         comment_parts.append("")
         
         # Related news section
-        comment_parts.append("🤝 **Collaborative News Sources:**")
+        comment_parts.append("📰 **Related News:**")
         comment_parts.append("")
         
         if related_news:
