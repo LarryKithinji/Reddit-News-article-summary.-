@@ -3,6 +3,9 @@ import requests
 import logging
 import time
 import re
+import os
+import webbrowser
+import secrets
 from typing import Optional, List, Dict
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
@@ -54,11 +57,32 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
-    REDDIT_CLIENT_SECRET = "CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
-    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by Old-Star54"
-    REDDIT_REFRESH_TOKEN = None  # Will be set after OAuth flow
-    REDDIT_REDIRECT_URI = "http://localhost:8080"  # For OAuth callback
+    # OAuth Configuration
+    REDDIT_CLIENT_ID = "f7W8IqjORfzKsNqHVVSlJg"
+    REDDIT_CLIENT_SECRET = "-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
+    REDDIT_USER_AGENT = "CommentBot/1.0 by Old-Star54"
+    
+    # OAuth endpoints
+    ENDPOINT_STANDARD = 'https://www.reddit.com'
+    ENDPOINT_OAUTH = 'https://oauth.reddit.com'
+    ENDPOINT_OAUTH_AUTHORIZE = 'https://www.reddit.com/api/v1/authorize'
+    ENDPOINT_OAUTH_TOKEN = 'https://www.reddit.com/api/v1/access_token'
+    REDIRECT_URI = 'http://localhost:8080'  # Must match your app configuration
+    
+    # OAuth scopes - permissions your bot needs
+    SCOPES = [
+        'identity',  # Access to account info
+        'read',      # Read posts and comments
+        'submit',    # Submit posts
+        'comment',   # Post comments
+        'edit',      # Edit posts and comments
+        'history',   # Access to voting history
+        'save'       # Save and unsave posts
+    ]
+    
+    # File to store refresh token (keep this secure!)
+    REFRESH_TOKEN_FILE = "reddit_refresh_token.txt"
+    
     COMMENT_DELAY = 120  # 2 minutes between comments
     SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
@@ -67,7 +91,145 @@ class Config:
     MIN_SUMMARY_WORDS = 80  # Minimum words (reduced from 100)
     MAX_SUMMARY_WORDS = 150  # Maximum words (increased from 110)
 
-# Content extractor class
+# OAuth Helper class
+class RedditOAuth:
+    """Handles Reddit OAuth authentication and token management."""
+    
+    def __init__(self):
+        self.client_id = Config.REDDIT_CLIENT_ID
+        self.client_secret = Config.REDDIT_CLIENT_SECRET
+        self.redirect_uri = Config.REDIRECT_URI
+        self.user_agent = Config.REDDIT_USER_AGENT
+        
+    def get_authorization_url(self) -> tuple[str, str]:
+        """Generate authorization URL and state for OAuth flow."""
+        state = secrets.token_urlsafe(32)  # Generate random state for security
+        
+        params = {
+            'client_id': self.client_id,
+            'response_type': 'code',
+            'state': state,
+            'redirect_uri': self.redirect_uri,
+            'duration': 'permanent',  # Get refresh token
+            'scope': ' '.join(Config.SCOPES)
+        }
+        
+        auth_url = f"{Config.ENDPOINT_OAUTH_AUTHORIZE}?{urllib.parse.urlencode(params)}"
+        return auth_url, state
+    
+    def exchange_code_for_tokens(self, code: str) -> dict:
+        """Exchange authorization code for access and refresh tokens."""
+        data = {
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': self.redirect_uri
+        }
+        
+        headers = {
+            'User-Agent': self.user_agent
+        }
+        
+        response = requests.post(
+            Config.ENDPOINT_OAUTH_TOKEN,
+            data=data,
+            headers=headers,
+            auth=(self.client_id, self.client_secret)
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Failed to exchange code for tokens: {response.status_code} - {response.text}")
+    
+    def refresh_access_token(self, refresh_token: str) -> dict:
+        """Use refresh token to get new access token."""
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token
+        }
+        
+        headers = {
+            'User-Agent': self.user_agent
+        }
+        
+        response = requests.post(
+            Config.ENDPOINT_OAUTH_TOKEN,
+            data=data,
+            headers=headers,
+            auth=(self.client_id, self.client_secret)
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f"Failed to refresh access token: {response.status_code} - {response.text}")
+    
+    def save_refresh_token(self, refresh_token: str):
+        """Save refresh token to file securely."""
+        try:
+            with open(Config.REFRESH_TOKEN_FILE, 'w') as f:
+                f.write(refresh_token)
+            os.chmod(Config.REFRESH_TOKEN_FILE, 0o600)  # Read/write for owner only
+            logger.info("Refresh token saved securely.")
+        except Exception as e:
+            logger.error(f"Failed to save refresh token: {e}")
+    
+    def load_refresh_token(self) -> Optional[str]:
+        """Load refresh token from file."""
+        try:
+            if os.path.exists(Config.REFRESH_TOKEN_FILE):
+                with open(Config.REFRESH_TOKEN_FILE, 'r') as f:
+                    return f.read().strip()
+        except Exception as e:
+            logger.error(f"Failed to load refresh token: {e}")
+        return None
+    
+    def setup_oauth_flow(self):
+        """Interactive OAuth setup for first-time authentication."""
+        print("Setting up Reddit OAuth authentication...")
+        print("This is a one-time setup process.")
+        print()
+        
+        # Generate authorization URL
+        auth_url, state = self.get_authorization_url()
+        
+        print("1. Please visit this URL to authorize the application:")
+        print(auth_url)
+        print()
+        print("2. After authorization, you'll be redirected to your redirect URI.")
+        print("3. Copy the 'code' parameter from the redirect URL.")
+        print("   Example: http://localhost:8080?code=YOUR_CODE_HERE&state=...")
+        print()
+        
+        # Optionally open browser
+        try:
+            webbrowser.open(auth_url)
+            print("Opening browser automatically...")
+        except:
+            print("Could not open browser automatically. Please copy the URL above.")
+        
+        # Get authorization code from user
+        code = input("Enter the authorization code: ").strip()
+        
+        if not code:
+            raise ValueError("Authorization code is required")
+        
+        # Exchange code for tokens
+        try:
+            tokens = self.exchange_code_for_tokens(code)
+            refresh_token = tokens.get('refresh_token')
+            
+            if refresh_token:
+                self.save_refresh_token(refresh_token)
+                print("OAuth setup completed successfully!")
+                print("Your refresh token has been saved securely.")
+                return refresh_token
+            else:
+                raise Exception("No refresh token received")
+                
+        except Exception as e:
+            print(f"OAuth setup failed: {e}")
+            raise
 class ContentExtractor:
     def extract_content(self, url: str) -> Optional[str]:
         """Extracts main content from a webpage using BeautifulSoup."""
@@ -241,90 +403,7 @@ class GoogleNewsExtractor:
         except:
             return google_url
 
-# OAuth2 Authentication Helper
-class RedditOAuth:
-    def __init__(self):
-        self.client_id = Config.REDDIT_CLIENT_ID
-        self.client_secret = Config.REDDIT_CLIENT_SECRET
-        self.redirect_uri = Config.REDDIT_REDIRECT_URI
-        self.user_agent = Config.REDDIT_USER_AGENT
-    
-    def get_authorization_url(self, state='random_state_string'):
-        """Generate the authorization URL for OAuth2 flow."""
-        auth_url = "https://www.reddit.com/api/v1/authorize"
-        params = {
-            'client_id': self.client_id,
-            'response_type': 'code',
-            'state': state,
-            'redirect_uri': self.redirect_uri,
-            'duration': 'permanent',
-            'scope': 'identity read submit'
-        }
-        
-        url_params = urllib.parse.urlencode(params)
-        full_url = f"{auth_url}?{url_params}"
-        
-        print(f"Please visit this URL to authorize the application:")
-        print(full_url)
-        print(f"\nAfter authorization, you'll be redirected to: {self.redirect_uri}")
-        print("Copy the 'code' parameter from the redirect URL and use it to get the refresh token.")
-        
-        return full_url
-    
-    def get_refresh_token(self, authorization_code):
-        """Exchange authorization code for refresh token."""
-        token_url = "https://www.reddit.com/api/v1/access_token"
-        
-        auth = requests.auth.HTTPBasicAuth(self.client_id, self.client_secret)
-        headers = {'User-Agent': self.user_agent}
-        data = {
-            'grant_type': 'authorization_code',
-            'code': authorization_code,
-            'redirect_uri': self.redirect_uri
-        }
-        
-        try:
-            response = requests.post(token_url, auth=auth, headers=headers, data=data)
-            response.raise_for_status()
-            
-            token_data = response.json()
-            refresh_token = token_data.get('refresh_token')
-            access_token = token_data.get('access_token')
-            
-            print(f"Success! Your refresh token is: {refresh_token}")
-            print("Store this refresh token securely and use it in your Config.REDDIT_REFRESH_TOKEN")
-            print(f"Access token (temporary): {access_token}")
-            
-            return refresh_token, access_token
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error getting refresh token: {e}")
-            return None, None
-    
-    def refresh_access_token(self, refresh_token):
-        """Get a new access token using the refresh token."""
-        token_url = "https://www.reddit.com/api/v1/access_token"
-        
-        auth = requests.auth.HTTPBasicAuth(self.client_id, self.client_secret)
-        headers = {'User-Agent': self.user_agent}
-        data = {
-            'grant_type': 'refresh_token',
-            'refresh_token': refresh_token
-        }
-        
-        try:
-            response = requests.post(token_url, auth=auth, headers=headers, data=data)
-            response.raise_for_status()
-            
-            token_data = response.json()
-            access_token = token_data.get('access_token')
-            
-            logger.info("Successfully refreshed access token")
-            return access_token
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error refreshing access token: {e}")
-            return None
+# Sumy Summarizer class
 class SumySummarizer:
     def __init__(self):
         self.language = Config.LANGUAGE
@@ -562,104 +641,66 @@ class SumySummarizer:
 
 # Reddit Bot class
 class RedditBot:
-    def __init__(self, refresh_token=None):
+    def __init__(self):
         self.extractor = ContentExtractor()
         self.summarizer = SumySummarizer()
         self.news_extractor = GoogleNewsExtractor()
-        self.oauth = RedditOAuth()
-        self.refresh_token = refresh_token or Config.REDDIT_REFRESH_TOKEN
+        self.oauth_helper = RedditOAuth()
         self.reddit = None
-        self.last_submission_time = time.time()  # Keep track of the latest processed submission time
+        self.last_submission_time = time.time()
         
-        # Initialize Reddit instance with OAuth
-        self._initialize_reddit()
+        # Initialize OAuth authentication
+        self._setup_reddit_connection()
 
-    def _initialize_reddit(self):
-        """Initialize Reddit instance with OAuth2 authentication."""
-        if not self.refresh_token:
-            logger.error("No refresh token provided. Please run the OAuth setup first.")
-            print("\n" + "="*50)
-            print("OAUTH SETUP REQUIRED")
-            print("="*50)
-            print("1. Run the setup_oauth() method to get authorization URL")
-            print("2. Visit the URL and authorize the application")
-            print("3. Copy the authorization code from the redirect URL")
-            print("4. Use get_refresh_token() to get your refresh token")
-            print("5. Update Config.REDDIT_REFRESH_TOKEN with your refresh token")
-            print("="*50)
-            return
+    def _setup_reddit_connection(self):
+        """Setup Reddit connection using OAuth."""
+        # Try to load existing refresh token
+        refresh_token = self.oauth_helper.load_refresh_token()
         
+        if not refresh_token:
+            logger.info("No refresh token found. Starting OAuth setup...")
+            refresh_token = self.oauth_helper.setup_oauth_flow()
+        
+        # Get access token using refresh token
         try:
-            # Get fresh access token
-            access_token = self.oauth.refresh_access_token(self.refresh_token)
-            if not access_token:
-                logger.error("Failed to get access token")
-                return
+            token_data = self.oauth_helper.refresh_access_token(refresh_token)
+            access_token = token_data['access_token']
             
-            # Initialize Reddit instance with OAuth
+            # Create Reddit instance with OAuth
             self.reddit = praw.Reddit(
                 client_id=Config.REDDIT_CLIENT_ID,
                 client_secret=Config.REDDIT_CLIENT_SECRET,
                 user_agent=Config.REDDIT_USER_AGENT,
-                refresh_token=self.refresh_token
+                refresh_token=refresh_token
             )
             
             # Test authentication
             me = self.reddit.user.me()
-            logger.info(f"Successfully authenticated as: {me.name}")
+            logger.info(f"Successfully authenticated via OAuth as: {me.name}")
             
         except Exception as e:
-            logger.error(f"Authentication failed: {str(e)}")
-            self.reddit = None
-
-    def setup_oauth(self):
-        """Helper method to set up OAuth authentication."""
-        print("Setting up OAuth2 authentication...")
-        print("This is a one-time setup process.")
-        print("-" * 40)
-        
-        # Step 1: Get authorization URL
-        auth_url = self.oauth.get_authorization_url()
-        
-        print("\nAfter visiting the URL and authorizing:")
-        print("1. You'll be redirected to a URL that starts with your redirect URI")
-        print("2. Copy the ENTIRE redirect URL")
-        print("3. Extract the 'code' parameter from the URL")
-        print("\nExample redirect URL:")
-        print("http://localhost:8080/?state=random_state_string&code=YOUR_CODE_HERE")
-        print("You need to copy: YOUR_CODE_HERE")
-        
-        return auth_url
-    
-    def complete_oauth_setup(self, authorization_code):
-        """Complete OAuth setup with authorization code."""
-        refresh_token, access_token = self.oauth.get_refresh_token(authorization_code)
-        
-        if refresh_token:
-            self.refresh_token = refresh_token
-            Config.REDDIT_REFRESH_TOKEN = refresh_token
+            logger.error(f"OAuth authentication failed: {e}")
+            logger.info("Refresh token may be invalid. Starting new OAuth setup...")
             
-            print("\n" + "="*50)
-            print("OAUTH SETUP COMPLETE!")
-            print("="*50)
-            print(f"Your refresh token: {refresh_token}")
-            print("\nIMPORTANT: Store this refresh token securely!")
-            print("Update your Config.REDDIT_REFRESH_TOKEN with this value.")
-            print("="*50)
+            # Remove invalid refresh token and try again
+            if os.path.exists(Config.REFRESH_TOKEN_FILE):
+                os.remove(Config.REFRESH_TOKEN_FILE)
             
-            # Initialize Reddit with new token
-            self._initialize_reddit()
-            return True
-        else:
-            print("Failed to get refresh token. Please try again.")
-            return False
+            refresh_token = self.oauth_helper.setup_oauth_flow()
+            token_data = self.oauth_helper.refresh_access_token(refresh_token)
+            
+            self.reddit = praw.Reddit(
+                client_id=Config.REDDIT_CLIENT_ID,
+                client_secret=Config.REDDIT_CLIENT_SECRET,
+                user_agent=Config.REDDIT_USER_AGENT,
+                refresh_token=refresh_token
+            )
+            
+            me = self.reddit.user.me()
+            logger.info(f"Successfully authenticated via OAuth as: {me.name}")
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-        if not self.reddit:
-            logger.error("Reddit instance not initialized. Please complete OAuth setup first.")
-            return
-        
         logger.info(f"Starting bot for subreddit: {subreddit_name}")
         subreddit = self.reddit.subreddit(subreddit_name)
 
@@ -767,26 +808,5 @@ class RedditBot:
 
 # Run the bot
 if __name__ == "__main__":
-    # OAuth Setup Example
-    # Uncomment the following lines for first-time OAuth setup:
-    
-    # bot = RedditBot()
-    # print("Starting OAuth setup...")
-    # auth_url = bot.setup_oauth()
-    # print(f"Visit this URL: {auth_url}")
-    # 
-    # # After visiting URL and getting authorization code:
-    # auth_code = input("Enter the authorization code from the redirect URL: ")
-    # if bot.complete_oauth_setup(auth_code):
-    #     print("OAuth setup complete! You can now run the bot.")
-    # else:
-    #     print("OAuth setup failed.")
-    
-    # Normal bot operation (after OAuth is set up):
-    # Make sure Config.REDDIT_REFRESH_TOKEN is set with your refresh token
-    if Config.REDDIT_REFRESH_TOKEN:
-        bot = RedditBot(Config.REDDIT_REFRESH_TOKEN)
-        bot.run("AfricaVoice")
-    else:
-        print("Please set up OAuth first by uncommenting the OAuth setup code above.")
-        print("Or set Config.REDDIT_REFRESH_TOKEN with your refresh token.")
+    bot = RedditBot()
+    bot.run("AfricaVoice")
