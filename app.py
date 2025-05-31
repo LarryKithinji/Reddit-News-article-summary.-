@@ -54,8 +54,8 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "f7W8IqjORfzKsNqHVVSlJg"
-    REDDIT_CLIENT_SECRET = "-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
+    REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
+    REDDIT_CLIENT_SECRET = "CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by Old-Star54"
     REDDIT_REFRESH_TOKEN = None  # Will be set after OAuth flow
     REDDIT_REDIRECT_URI = "http://localhost:8080"  # For OAuth callback
