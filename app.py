@@ -58,8 +58,8 @@ logger = logging.getLogger(__name__)
 # Configuration class
 class Config:
     # OAuth Configuration
-    REDDIT_CLIENT_ID = "f7W8IqjORfzKsNqHVVSlJg"
-    REDDIT_CLIENT_SECRET = "-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
+    REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
+    REDDIT_CLIENT_SECRET = "-CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
     REDDIT_USER_AGENT = "CommentBot/1.0 by Old-Star54"
     
     # OAuth endpoints
