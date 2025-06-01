@@ -57,7 +57,7 @@ class Config:
     REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
     REDDIT_CLIENT_SECRET = "CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "Cautious_Ad_4678"
+    REDDIT_USERNAME = ""
     REDDIT_PASSWORD = "KePCCgt2minU1s1"
     COMMENT_DELAY = 90   # 1.5 minutes between comments (respects rate limits)
     SUBMISSION_DELAY = 30  # 30 seconds between submission checks (more responsive)
