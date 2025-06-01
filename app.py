@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "lbcuDEyhW2KaUWCBG8MQ"
+    REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
     REDDIT_CLIENT_SECRET = "CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
     REDDIT_USER_AGENT = "CommentBot"
     REDDIT_USERNAME = "Cautious_Ad_4678"
