@@ -59,8 +59,8 @@ class Config:
     REDDIT_USER_AGENT = "CommentBot"
     REDDIT_USERNAME = "Old-Star54"
     REDDIT_PASSWORD = "KePCCgt2minU1s1"
-    COMMENT_DELAY = 120  # 2 minutes between comments
-    SUBMISSION_DELAY = 60  # 1 minute between submission checks
+    COMMENT_DELAY = 90   # 1.5 minutes between comments (respects rate limits)
+    SUBMISSION_DELAY = 30  # 30 seconds between submission checks (more responsive)
     LANGUAGE = "english"  # Language for Sumy summarizer
     SENTENCES_COUNT = 4  # Number of sentences for summary
     # Liberal summary length thresholds for complete summaries
@@ -483,6 +483,8 @@ class RedditBot:
         self.extractor = ContentExtractor()
         self.summarizer = SumySummarizer()
         self.news_extractor = GoogleNewsExtractor()
+        
+        # Initialize Reddit instance once and reuse it
         self.reddit = praw.Reddit(
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
@@ -490,30 +492,110 @@ class RedditBot:
             username=Config.REDDIT_USERNAME,
             password=Config.REDDIT_PASSWORD,
         )
-        self.last_submission_time = time.time()  # Keep track of the latest processed submission time
+        
+        self.last_submission_time = time.time()
+        self.processed_submissions = set()  # Track processed submissions to avoid duplicates
+        self.last_api_call = 0  # Track last API call for rate limiting
+        self.api_calls_this_minute = 0  # Track API calls per minute
+        self.minute_start = time.time()  # Track when current minute started
+        
+        # Single authentication check at startup
+        self._authenticate()
 
-        # Authentication check
+    def _authenticate(self):
+        """Authenticate once at startup and log the result."""
         try:
             me = self.reddit.user.me()
-            logger.info(f"Successfully authenticated as: {me.name}")
+            logger.info(f"Successfully authenticated as: {me.name} - Using OAuth2 Resource Owner Password Credentials Grant")
+            logger.info(f"Rate limit: 100 requests per minute")
         except Exception as e:
             logger.error(f"Authentication failed: {str(e)}")
+            raise
+
+    def _rate_limit_check(self):
+        """Ensure we respect Reddit's rate limits (100 requests per minute)."""
+        current_time = time.time()
+        
+        # Reset counter if a new minute has started
+        if current_time - self.minute_start >= 60:
+            self.api_calls_this_minute = 0
+            self.minute_start = current_time
+        
+        # If we're approaching the limit, wait
+        if self.api_calls_this_minute >= 95:  # Leave some buffer
+            sleep_time = 60 - (current_time - self.minute_start)
+            if sleep_time > 0:
+                logger.info(f"Rate limit approaching, sleeping for {sleep_time:.1f} seconds")
+                time.sleep(sleep_time)
+                self.api_calls_this_minute = 0
+                self.minute_start = time.time()
+        
+        self.api_calls_this_minute += 1
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
         logger.info(f"Starting bot for subreddit: {subreddit_name}")
-        subreddit = self.reddit.subreddit(subreddit_name)
+        
+        try:
+            subreddit = self.reddit.subreddit(subreddit_name)
+            logger.info(f"Connected to subreddit: r/{subreddit_name}")
+        except Exception as e:
+            logger.error(f"Failed to connect to subreddit: {e}")
+            return
+
+        consecutive_errors = 0
+        max_consecutive_errors = 5
 
         while True:
             try:
-                for submission in subreddit.new(limit=10):
+                # Rate limit check before API call
+                self._rate_limit_check()
+                
+                # Get new submissions
+                new_submissions = list(subreddit.new(limit=10))
+                logger.debug(f"Fetched {len(new_submissions)} submissions")
+                
+                processed_count = 0
+                for submission in new_submissions:
+                    # Skip if already processed
+                    if submission.id in self.processed_submissions:
+                        continue
+                    
+                    # Skip if too old (only process recent submissions)
                     if submission.created_utc > self.last_submission_time:
                         self._process_submission(submission)
-                        self.last_submission_time = submission.created_utc
+                        self.processed_submissions.add(submission.id)
+                        self.last_submission_time = max(self.last_submission_time, submission.created_utc)
+                        processed_count += 1
+                        
+                        # Delay between processing submissions
                         time.sleep(Config.SUBMISSION_DELAY)
+                
+                if processed_count > 0:
+                    logger.info(f"Processed {processed_count} new submissions")
+                
+                # Clean up old processed submissions to prevent memory issues
+                if len(self.processed_submissions) > 1000:
+                    # Keep only the most recent 500
+                    self.processed_submissions = set(list(self.processed_submissions)[-500:])
+                
+                consecutive_errors = 0  # Reset error counter on success
+                
+                # Wait before next check
+                time.sleep(Config.SUBMISSION_DELAY)
+                
             except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                time.sleep(60)
+                consecutive_errors += 1
+                logger.error(f"Error in main loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error(f"Too many consecutive errors ({max_consecutive_errors}), exiting")
+                    break
+                
+                # Exponential backoff for errors
+                sleep_time = min(60 * (2 ** consecutive_errors), 300)  # Max 5 minutes
+                logger.info(f"Waiting {sleep_time} seconds before retry")
+                time.sleep(sleep_time)
 
     def _process_submission(self, submission):
         """Processes a single submission, extracts content, and posts a summary."""
@@ -549,13 +631,22 @@ class RedditBot:
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Posts a comment on the submission with the generated summary and related news."""
         try:
+            # Rate limit check before posting comment
+            self._rate_limit_check()
+            
             # Format the comment according to the specified template
             formatted_comment = self._format_comment(submission.title, summary, related_news)
+            
+            # Post the comment
             submission.reply(formatted_comment)
             logger.info(f"Comment posted successfully on submission {submission.id}")
+            
+            # Delay after posting comment (respect rate limits)
             time.sleep(Config.COMMENT_DELAY)
+            
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
+            # Don't re-raise the exception to continue processing other submissions
 
     def _format_comment(self, title: str, summary: Optional[str], related_news: List[Dict[str, str]]) -> str:
         """Format the comment according to the specified template."""
