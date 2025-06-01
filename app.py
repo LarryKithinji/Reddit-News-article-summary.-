@@ -54,13 +54,13 @@ logger = logging.getLogger(__name__)
 
 # Configuration class
 class Config:
-    REDDIT_CLIENT_ID = "u-lbcuDEyhW2KaUWCBG8MQ"
-    REDDIT_CLIENT_SECRET = "CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
+    REDDIT_CLIENT_ID = "lbcuDEyhW2KaUWCBG8MQ"
+    REDDIT_CLIENT_SECRET = "-CIsbZsyRF1Ympv029sqL4s6JbMNvCw"
     REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = ""
+    REDDIT_USERNAME = "Cautious_Ad_4678"
     REDDIT_PASSWORD = "KePCCgt2minU1s1"
-    COMMENT_DELAY = 90   # 1.5 minutes between comments (respects rate limits)
-    SUBMISSION_DELAY = 30  # 30 seconds between submission checks (more responsive)
+    COMMENT_DELAY = 120  # 2 minutes between comments
+    SUBMISSION_DELAY = 60  # 1 minute between submission checks
     LANGUAGE = "english"  # Language for Sumy summarizer
     SENTENCES_COUNT = 4  # Number of sentences for summary
     # Liberal summary length thresholds for complete summaries
@@ -477,125 +477,156 @@ class SumySummarizer:
         
         return sentence.strip()
 
-# Reddit Bot class
+# Reddit Bot class with persistent session management
 class RedditBot:
+    _instance = None
+    _reddit_client = None
+    _authenticated = False
+    _last_auth_attempt = 0
+    _auth_retry_delay = 3600  # 1 hour between auth retries
+    
+    def __new__(cls):
+        """Singleton pattern to ensure only one bot instance exists."""
+        if cls._instance is None:
+            cls._instance = super(RedditBot, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
+        # Only initialize once
+        if hasattr(self, '_initialized'):
+            return
+            
         self.extractor = ContentExtractor()
         self.summarizer = SumySummarizer()
         self.news_extractor = GoogleNewsExtractor()
-        
-        # Initialize Reddit instance once and reuse it
-        self.reddit = praw.Reddit(
-            client_id=Config.REDDIT_CLIENT_ID,
-            client_secret=Config.REDDIT_CLIENT_SECRET,
-            user_agent=Config.REDDIT_USER_AGENT,
-            username=Config.REDDIT_USERNAME,
-            password=Config.REDDIT_PASSWORD,
-        )
-        
         self.last_submission_time = time.time()
-        self.processed_submissions = set()  # Track processed submissions to avoid duplicates
-        self.last_api_call = 0  # Track last API call for rate limiting
-        self.api_calls_this_minute = 0  # Track API calls per minute
-        self.minute_start = time.time()  # Track when current minute started
+        self._request_count = 0
+        self._last_request_reset = time.time()
+        self._max_requests_per_minute = 90  # Conservative limit (Reddit allows 100)
+        self._initialized = True
         
-        # Single authentication check at startup
-        self._authenticate()
+        # Initialize Reddit client
+        self._initialize_reddit_client()
 
-    def _authenticate(self):
-        """Authenticate once at startup and log the result."""
-        try:
-            me = self.reddit.user.me()
-            logger.info(f"Successfully authenticated as: {me.name} - Using OAuth2 Resource Owner Password Credentials Grant")
-            logger.info(f"Rate limit: 100 requests per minute")
-        except Exception as e:
-            logger.error(f"Authentication failed: {str(e)}")
-            raise
-
-    def _rate_limit_check(self):
-        """Ensure we respect Reddit's rate limits (100 requests per minute)."""
+    def _initialize_reddit_client(self):
+        """Initialize Reddit client with proper authentication and rate limiting."""
         current_time = time.time()
         
-        # Reset counter if a new minute has started
-        if current_time - self.minute_start >= 60:
-            self.api_calls_this_minute = 0
-            self.minute_start = current_time
-        
-        # If we're approaching the limit, wait
-        if self.api_calls_this_minute >= 95:  # Leave some buffer
-            sleep_time = 60 - (current_time - self.minute_start)
-            if sleep_time > 0:
-                logger.info(f"Rate limit approaching, sleeping for {sleep_time:.1f} seconds")
-                time.sleep(sleep_time)
-                self.api_calls_this_minute = 0
-                self.minute_start = time.time()
-        
-        self.api_calls_this_minute += 1
-
-    def run(self, subreddit_name: str):
-        """Main loop to monitor the subreddit and process new submissions."""
-        logger.info(f"Starting bot for subreddit: {subreddit_name}")
+        # Check if we should attempt authentication
+        if (self._authenticated and self._reddit_client is not None):
+            logger.info("Using existing authenticated Reddit session")
+            return
+            
+        if (current_time - self._last_auth_attempt) < self._auth_retry_delay:
+            logger.warning(f"Skipping auth attempt. Next attempt in {self._auth_retry_delay - (current_time - self._last_auth_attempt):.0f} seconds")
+            return
+            
+        self._last_auth_attempt = current_time
         
         try:
-            subreddit = self.reddit.subreddit(subreddit_name)
-            logger.info(f"Connected to subreddit: r/{subreddit_name}")
+            logger.info("Initializing Reddit client...")
+            self._reddit_client = praw.Reddit(
+                client_id=Config.REDDIT_CLIENT_ID,
+                client_secret=Config.REDDIT_CLIENT_SECRET,
+                user_agent=Config.REDDIT_USER_AGENT,
+                username=Config.REDDIT_USERNAME,
+                password=Config.REDDIT_PASSWORD,
+            )
+            
+            # Test authentication
+            me = self._reddit_client.user.me()
+            self._authenticated = True
+            logger.info(f"Successfully authenticated as: {me.name} - Session will persist")
+            
         except Exception as e:
-            logger.error(f"Failed to connect to subreddit: {e}")
-            return
+            logger.error(f"Authentication failed: {str(e)}")
+            self._authenticated = False
+            self._reddit_client = None
+            
+    @property
+    def reddit(self):
+        """Property to access Reddit client with session validation."""
+        if not self._authenticated or self._reddit_client is None:
+            logger.warning("Reddit client not authenticated, attempting to re-initialize...")
+            self._initialize_reddit_client()
+            
+        return self._reddit_client
+    
+    def _check_rate_limit(self):
+        """Check and enforce rate limiting to respect Reddit's API limits."""
+        current_time = time.time()
+        
+        # Reset counter every minute
+        if current_time - self._last_request_reset >= 60:
+            self._request_count = 0
+            self._last_request_reset = current_time
+            logger.debug("Rate limit counter reset")
+            
+        # Check if we're approaching the limit
+        if self._request_count >= self._max_requests_per_minute:
+            sleep_time = 60 - (current_time - self._last_request_reset)
+            if sleep_time > 0:
+                logger.warning(f"Rate limit reached. Sleeping for {sleep_time:.1f} seconds")
+                time.sleep(sleep_time)
+                self._request_count = 0
+                self._last_request_reset = time.time()
+        
+        self._request_count += 1
 
+    def run(self, subreddit_name: str):
+        """Main loop to monitor the subreddit and process new submissions with persistent session."""
+        logger.info(f"Starting bot for subreddit: {subreddit_name}")
+        
+        # Ensure we have a valid Reddit client
+        if not self._authenticated:
+            logger.error("Cannot start bot - Reddit authentication failed")
+            return
+            
         consecutive_errors = 0
         max_consecutive_errors = 5
-
+        
         while True:
             try:
-                # Rate limit check before API call
-                self._rate_limit_check()
+                # Check rate limit before making requests
+                self._check_rate_limit()
                 
-                # Get new submissions
-                new_submissions = list(subreddit.new(limit=10))
-                logger.debug(f"Fetched {len(new_submissions)} submissions")
+                subreddit = self.reddit.subreddit(subreddit_name)
                 
-                processed_count = 0
-                for submission in new_submissions:
-                    # Skip if already processed
-                    if submission.id in self.processed_submissions:
-                        continue
-                    
-                    # Skip if too old (only process recent submissions)
+                for submission in subreddit.new(limit=10):
                     if submission.created_utc > self.last_submission_time:
                         self._process_submission(submission)
-                        self.processed_submissions.add(submission.id)
-                        self.last_submission_time = max(self.last_submission_time, submission.created_utc)
-                        processed_count += 1
-                        
-                        # Delay between processing submissions
+                        self.last_submission_time = submission.created_utc
                         time.sleep(Config.SUBMISSION_DELAY)
-                
-                if processed_count > 0:
-                    logger.info(f"Processed {processed_count} new submissions")
-                
-                # Clean up old processed submissions to prevent memory issues
-                if len(self.processed_submissions) > 1000:
-                    # Keep only the most recent 500
-                    self.processed_submissions = set(list(self.processed_submissions)[-500:])
-                
-                consecutive_errors = 0  # Reset error counter on success
-                
-                # Wait before next check
-                time.sleep(Config.SUBMISSION_DELAY)
+                        
+                # Reset error counter on successful iteration
+                consecutive_errors = 0
                 
             except Exception as e:
                 consecutive_errors += 1
                 logger.error(f"Error in main loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
                 
-                if consecutive_errors >= max_consecutive_errors:
-                    logger.error(f"Too many consecutive errors ({max_consecutive_errors}), exiting")
-                    break
+                # Handle different types of errors
+                if "429" in str(e) or "rate limit" in str(e).lower():
+                    # Rate limit error - wait longer
+                    logger.warning("Rate limit error detected, waiting 5 minutes")
+                    time.sleep(300)
+                elif "401" in str(e) or "403" in str(e):
+                    # Authentication error - try to re-authenticate
+                    logger.warning("Authentication error detected, attempting to re-authenticate")
+                    self._authenticated = False
+                    self._initialize_reddit_client()
+                    time.sleep(60)
+                else:
+                    # General error - progressive backoff
+                    sleep_time = min(60 * consecutive_errors, 300)  # Max 5 minutes
+                    logger.warning(f"General error, sleeping for {sleep_time} seconds")
+                    time.sleep(sleep_time)
                 
-                # Exponential backoff for errors
-                sleep_time = min(60 * (2 ** consecutive_errors), 300)  # Max 5 minutes
-                logger.info(f"Waiting {sleep_time} seconds before retry")
-                time.sleep(sleep_time)
+                # If too many consecutive errors, wait longer before retrying
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error(f"Too many consecutive errors ({consecutive_errors}), sleeping for 10 minutes")
+                    time.sleep(600)
+                    consecutive_errors = 0
 
     def _process_submission(self, submission):
         """Processes a single submission, extracts content, and posts a summary."""
@@ -631,22 +662,13 @@ class RedditBot:
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Posts a comment on the submission with the generated summary and related news."""
         try:
-            # Rate limit check before posting comment
-            self._rate_limit_check()
-            
             # Format the comment according to the specified template
             formatted_comment = self._format_comment(submission.title, summary, related_news)
-            
-            # Post the comment
             submission.reply(formatted_comment)
             logger.info(f"Comment posted successfully on submission {submission.id}")
-            
-            # Delay after posting comment (respect rate limits)
             time.sleep(Config.COMMENT_DELAY)
-            
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
-            # Don't re-raise the exception to continue processing other submissions
 
     def _format_comment(self, title: str, summary: Optional[str], related_news: List[Dict[str, str]]) -> str:
         """Format the comment according to the specified template."""
