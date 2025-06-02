@@ -1,59 +1,61 @@
 import praw
-import time
+import threading
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-client_id = 'p4SHQ57gs2X_bMtaARiJvw'
-client_secret = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
-redirect_uri = 'http://localhost:8080'
-user_agent = 'myredditbot by u/YOUR_USERNAME'
+# ==== FILL IN YOUR REDDIT APP DETAILS HERE ====
+CLIENT_ID = 'p4SHQ57gs2X_bMtaARiJvw'
+CLIENT_SECRET = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
+REDIRECT_URI = 'http://localhost:8080'
+USER_AGENT = 'refresh_token_bot by u/your_reddit_username'
 
-# Your authorization code (this might be expired)
-code = 'g9kZrU0JrY9i6tEfpXnO0kEeDI-eFg'
+SCOPES = ['identity', 'read', 'submit', 'edit', 'vote', 'save']  # include 'submit' to allow commenting
+STATE = 'secure_random_string'
 
-print("🔍 Debugging Reddit OAuth...")
-print(f"Client ID: {client_id}")
-print(f"Redirect URI: {redirect_uri}")
-print(f"Code: {code}")
-
+# ==== STEP 1: Start Reddit Instance ====
 reddit = praw.Reddit(
-    client_id=client_id,
-    client_secret=client_secret,
-    redirect_uri=redirect_uri,
-    user_agent=user_agent
+    client_id=CLIENT_ID,
+    client_secret=CLIENT_SECRET,
+    redirect_uri=REDIRECT_URI,
+    user_agent=USER_AGENT
 )
 
-try:
-    print("\n⏳ Attempting to get refresh token...")
-    refresh_token = reddit.auth.authorize(code)
-    print(f"✅ SUCCESS! Your refresh token is:")
-    print(f"{refresh_token}")
-    print("\n💾 Save this refresh token securely!")
-    
-except praw.exceptions.OAuthException as e:
-    print(f"❌ OAuth Error: {e}")
-    print("\n💡 Common solutions:")
-    print("1. Authorization code has expired (they expire in ~10 minutes)")
-    print("2. Authorization code has already been used (single-use only)")
-    print("3. Redirect URI mismatch")
-    print("\n🔄 You need to get a NEW authorization code:")
-    
-    # Generate new auth URL
-    import os
-    state = os.urandom(16).hex()
-    scopes = ['identity', 'read', 'submit', 'edit', 'save', 'vote']
-    auth_url = reddit.auth.url(scopes=scopes, state=state, duration='permanent')
-    
-    print(f"\n🔗 Open this URL to get a NEW authorization code:")
-    print(auth_url)
-    print("\n📋 After authorizing, look for 'code=' in the redirect URL")
-    
-except Exception as e:
-    print(f"❌ Unexpected error: {e}")
-    print(f"Error type: {type(e).__name__}")
+# ==== STEP 2: Start local web server to receive the code ====
+class AuthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if 'code=' in self.path:
+            from urllib.parse import parse_qs, urlparse
+            params = parse_qs(urlparse(self.path).query)
+            self.server.auth_code = params['code'][0]
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"<h1>You may now close this window.</h1>")
+        else:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"<h1>Invalid response.</h1>")
 
-print("\n" + "="*50)
-print("🆘 If you need a fresh authorization code:")
-print("1. Open the auth URL above")
-print("2. Authorize your app")
-print("3. Copy the 'code' parameter from the redirect URL")
-print("4. Replace the old code in this script")
-print("5. Run the script again immediately (within 10 minutes)")
+def start_server():
+    server = HTTPServer(('localhost', 8080), AuthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+# ==== STEP 3: Generate auth URL and open it ====
+server = start_server()
+auth_url = reddit.auth.url(SCOPES, STATE, duration='permanent')
+print(f"🔗 Open this URL in your browser if it doesn't open automatically:\n{auth_url}")
+webbrowser.open(auth_url)
+
+# ==== STEP 4: Wait for the code ====
+import time
+print("🌐 Waiting for you to authorize the app in your browser...")
+while not hasattr(server, 'auth_code'):
+    time.sleep(1)
+
+code = server.auth_code
+server.shutdown()
+
+# ==== STEP 5: Exchange the code for a refresh token ====
+refresh_token = reddit.auth.authorize(code)
+print("\n✅ Your REFRESH TOKEN (save this securely):\n")
+print(refresh_token)
