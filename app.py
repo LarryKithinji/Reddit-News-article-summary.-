@@ -6,7 +6,7 @@ redirect_uri = 'http://localhost:8080'
 user_agent = 'myredditbot by u/YOUR_USERNAME'
 
 # Put your fresh authorization code here
-code = HDLz3nXz1SIv6wOIsbtMB_E8Y3LR1w#_'  # Replace with fresh code
+code = 'HDLz3nXz1SIv6wOIsbtMB_E8Y3LR1w#_'  # Replace with fresh code
 
 reddit = praw.Reddit(
     client_id=client_id,
