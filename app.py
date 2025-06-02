@@ -5,7 +5,7 @@ import os
 # === Fill in your Reddit app credentials ===
 client_id = 'p4SHQ57gs2X_bMtaARiJvw'
 client_secret = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
-redirect_uri = 'http://localhost:8080'
+redirect_uri = 'urn:ietf:wg:oauth:2.0:oob'
 user_agent = 'myredditbot by u/YOUR_USERNAME'
 
 # === Scopes for commenting ===
@@ -26,7 +26,7 @@ auth_url = reddit.auth.url(scopes=scopes, state=state, duration='permanent')
 print("\n🔗 STEP 1: Open this URL in your browser to authorize:")
 print(auth_url)
 print("\n📋 STEP 2: After authorizing, you'll be redirected to a URL like:")
-print("http://localhost:8080/?state=...&code=AUTHORIZATION_CODE_HERE")
+print("urn:ietf:wg:oauth:2.0:oob/?state=...&code=AUTHORIZATION_CODE_HERE")
 print("\n✂️  STEP 3: Copy the 'code' parameter from the redirected URL and paste it below:")
 
 # Get the authorization code manually
