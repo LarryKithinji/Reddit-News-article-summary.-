@@ -3,71 +3,65 @@ import praw
 # Your Reddit app credentials
 client_id = 'p4SHQ57gs2X_bMtaARiJvw'
 client_secret = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
-username = 'Beginning_Item_9587'
-password = 'KePCCgt2minU1s1'
+redirect_uri = 'http://localhost:8080'
+user_agent = 'my-reddit-bot/0.1 by u/Beginning_Item_9587'
 
-# Method 1: Username/Password (Limited - no permanent tokens)
-print("=== METHOD 1: Username/Password Authentication ===")
-reddit_temp = praw.Reddit(
+# Your fresh authorization code
+code = 'CDTOJt5esyZ8ZGU-Ny5bnAOfo3AQuA'
+
+print("🔄 Converting authorization code to permanent refresh token...")
+print(f"Code: {code}")
+
+# Create Reddit instance
+reddit = praw.Reddit(
     client_id=client_id,
     client_secret=client_secret,
-    username=username,
-    password=password,
-    user_agent='my-reddit-bot/0.1 by u/Beginning_Item_9587'
+    redirect_uri=redirect_uri,
+    user_agent=user_agent
 )
 
 try:
-    print(f"✅ Authenticated as: {reddit_temp.user.me()}")
-    print("⚠️  This uses username/password - not permanent tokens")
+    # Exchange code for permanent refresh token
+    refresh_token = reddit.auth.authorize(code)
+    
+    print("\n" + "="*60)
+    print("✅ SUCCESS! Your PERMANENT refresh token is:")
+    print("="*60)
+    print(refresh_token)
+    print("="*60)
+    
+    print("\n💾 IMPORTANT: Save this refresh token securely!")
+    print("🔧 Use it in your Reddit bots like this:")
+    print("\nreddit = praw.Reddit(")
+    print(f"    client_id='{client_id}',")
+    print(f"    client_secret='{client_secret}',")
+    print(f"    refresh_token='{refresh_token}',")
+    print(f"    user_agent='{user_agent}'")
+    print(")")
+    
+    print("\n🎉 This refresh token NEVER expires!")
+    print("💡 You can now authenticate your bot permanently without passwords")
+    
+    # Test the refresh token
+    print("\n🧪 Testing the refresh token...")
+    test_reddit = praw.Reddit(
+        client_id=client_id,
+        client_secret=client_secret,
+        refresh_token=refresh_token,
+        user_agent=user_agent
+    )
+    
+    user = test_reddit.user.me()
+    print(f"✅ Test successful! Authenticated as: {user.name}")
+    
 except Exception as e:
     print(f"❌ Error: {e}")
-
-print("\n" + "="*60)
-
-# Method 2: OAuth2 for Permanent Refresh Token
-print("=== METHOD 2: OAuth2 for Permanent Refresh Token ===")
-
-reddit_oauth = praw.Reddit(
-    client_id=client_id,
-    client_secret=client_secret,
-    redirect_uri='http://localhost:8080',
-    user_agent='my-reddit-bot/0.1 by u/Beginning_Item_9587'
-)
-
-# Generate permanent authorization URL
-import os
-state = os.urandom(16).hex()
-scopes = ['identity', 'read', 'submit', 'edit', 'save', 'vote']
-auth_url = reddit_oauth.auth.url(
-    scopes=scopes, 
-    state=state, 
-    duration='permanent'  # This makes it permanent!
-)
-
-print("🔗 Open this URL for PERMANENT authorization:")
-print(auth_url)
-print("\n📋 After authorizing, paste the authorization code below:")
-
-# Get authorization code
-auth_code = input("Authorization code: ").strip()
-
-if auth_code:
-    try:
-        # Exchange for permanent refresh token
-        refresh_token = reddit_oauth.auth.authorize(auth_code)
-        print(f"\n✅ SUCCESS! Your PERMANENT refresh token:")
-        print(f"🔑 {refresh_token}")
-        print("\n💾 Save this refresh token securely!")
-        print("\n🔧 Use it like this in your bots:")
-        print("reddit = praw.Reddit(")
-        print(f"    client_id='{client_id}',")
-        print(f"    client_secret='{client_secret}',")
-        print(f"    refresh_token='{refresh_token}',")
-        print("    user_agent='your-user-agent'")
-        print(")")
-        
-    except Exception as e:
-        print(f"❌ Error getting refresh token: {e}")
-        print("💡 Make sure the authorization code is fresh (expires in ~10 min)")
-else:
-    print("❌ No authorization code provided")
+    print("\n💡 Possible issues:")
+    print("- Authorization code may have expired (they expire in ~10 minutes)")
+    print("- Code may have already been used (single-use only)")
+    print("- Check that your app credentials are correct")
+    
+    print(f"\n🔍 Debug info:")
+    print(f"Client ID: {client_id}")
+    print(f"Redirect URI: {redirect_uri}")
+    print(f"Code length: {len(code)} characters")
