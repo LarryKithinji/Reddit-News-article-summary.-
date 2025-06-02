@@ -1,10 +1,10 @@
 import requests
 import requests.auth
 
-client_id = "YOUR_CLIENT_ID"
-client_secret = "YOUR_CLIENT_SECRET"
-username = "YOUR_REDDIT_USERNAME"
-password = "YOUR_REDDIT_PASSWORD"
+client_id = "PVwX9RTdLj99l1lU9LkvPTEUNmotyQ"
+client_secret = "PVwX9RTdLj99l1lU9LkvPTEUNmotyQ"
+username = "Beginning_Item_9587"
+password = "KePCCgt2minU1s1"
 
 auth = requests.auth.HTTPBasicAuth(client_id, client_secret)
 
