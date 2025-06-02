@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 class Config:
     REDDIT_CLIENT_ID = "p4SHQ57gs2X_bMtaARiJvw"
     REDDIT_CLIENT_SECRET = "PVwX9RTdLj99l1lU9LkvPTEUNmotyQ"
-    REDDIT_REFRESH_TOKEN "176697242966276-6lkJXzhADRjq6jgEkcAM_yz_F0FJaw"  # Replace with your actual refresh token
+    REDDIT_REFRESH_TOKEN = "176697242966276-6lkJXzhADRjq6jgEkcAM_yz_F0FJaw"  # Replace with your actual refresh token
     REDDIT_USER_AGENT = "AfricaVoiceBot by u/Old-Star54"
     COMMENT_DELAY = 300  # 5 minutes between comments (increased for rate limits)
     SUBMISSION_DELAY = 120  # 2 minutes between submission checks (increased for rate limits)
