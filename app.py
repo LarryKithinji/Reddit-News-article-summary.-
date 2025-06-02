@@ -71,7 +71,7 @@ class Config:
     SENTENCES_COUNT = 5
     
     # Percentage-based summary settings
-    MIN_SUMMARY_PERCENTAGE = 30  # Minimum 30% of original content
+    MIN_SUMMARY_PERCENTAGE = 20  # Minimum 20% of original content
     MAX_SUMMARY_PERCENTAGE = 40  # Maximum 40% of original content
 
 # Content extractor class
@@ -304,7 +304,7 @@ class GoogleNewsExtractor:
             return False
         
         similarity = len(title_words.intersection(content_words)) / len(title_words)
-        return similarity > 0.7  # 70% similarity threshold
+        return similarity > 0.7  # 40% similarity threshold
     
     def _is_africa_related(self, title: str, description: str) -> bool:
         """Check if news item is related to Africa or African diaspora."""
