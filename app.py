@@ -1,61 +1,74 @@
 import praw
-import threading
-import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 
-# ==== FILL IN YOUR REDDIT APP DETAILS HERE ====
-CLIENT_ID = 'p4SHQ57gs2X_bMtaARiJvw'
-CLIENT_SECRET = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
-REDIRECT_URI = 'http://localhost:8080'
-USER_AGENT = 'refresh_token_bot by u/your_reddit_username'
+# === Your Reddit app credentials ===
+client_id = 'p4SHQ57gs2X_bMtaARiJvw'
+client_secret = 'PVwX9RTdLj99l1lU9LkvPTEUNmotyQ'
+redirect_uri = 'http://localhost:8080'
+user_agent = 'myredditbot by u/YOUR_USERNAME'
 
-SCOPES = ['identity', 'read', 'submit', 'edit', 'vote', 'save']  # include 'submit' to allow commenting
-STATE = 'secure_random_string'
+# === Scopes needed ===
+scopes = ['identity', 'read', 'submit', 'edit', 'save', 'vote']
 
-# ==== STEP 1: Start Reddit Instance ====
+print("🚀 Reddit OAuth Setup")
+print("="*40)
+
+# Create Reddit instance
 reddit = praw.Reddit(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    redirect_uri=REDIRECT_URI,
-    user_agent=USER_AGENT
+    client_id=client_id,
+    client_secret=client_secret,
+    redirect_uri=redirect_uri,
+    user_agent=user_agent
 )
 
-# ==== STEP 2: Start local web server to receive the code ====
-class AuthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if 'code=' in self.path:
-            from urllib.parse import parse_qs, urlparse
-            params = parse_qs(urlparse(self.path).query)
-            self.server.auth_code = params['code'][0]
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"<h1>You may now close this window.</h1>")
-        else:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"<h1>Invalid response.</h1>")
+# Generate authorization URL
+state = os.urandom(16).hex()
+auth_url = reddit.auth.url(scopes=scopes, state=state, duration='permanent')
 
-def start_server():
-    server = HTTPServer(('localhost', 8080), AuthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
+print("📋 STEP 1: Copy and open this URL in your browser:")
+print(f"\n{auth_url}\n")
+print("📋 STEP 2: After authorizing, you'll be redirected to a URL like:")
+print("http://localhost:8080/?state=abc123&code=YOUR_CODE_HERE")
+print("\n📋 STEP 3: Copy ONLY the code parameter (after 'code=') and paste below:")
 
-# ==== STEP 3: Generate auth URL and open it ====
-server = start_server()
-auth_url = reddit.auth.url(SCOPES, STATE, duration='permanent')
-print(f"🔗 Open this URL in your browser if it doesn't open automatically:\n{auth_url}")
-webbrowser.open(auth_url)
+# Get fresh authorization code
+while True:
+    code = input("\n🔑 Enter authorization code: ").strip()
+    
+    if not code:
+        print("❌ Please enter a code")
+        continue
+        
+    if len(code) < 10:
+        print("❌ Code seems too short, please check")
+        continue
+        
+    break
 
-# ==== STEP 4: Wait for the code ====
-import time
-print("🌐 Waiting for you to authorize the app in your browser...")
-while not hasattr(server, 'auth_code'):
-    time.sleep(1)
+# Exchange code for refresh token
+print(f"\n⏳ Exchanging code for refresh token...")
 
-code = server.auth_code
-server.shutdown()
-
-# ==== STEP 5: Exchange the code for a refresh token ====
-refresh_token = reddit.auth.authorize(code)
-print("\n✅ Your REFRESH TOKEN (save this securely):\n")
-print(refresh_token)
+try:
+    refresh_token = reddit.auth.authorize(code)
+    print("\n" + "="*50)
+    print("✅ SUCCESS! Here's your permanent refresh token:")
+    print("="*50)
+    print(f"{refresh_token}")
+    print("="*50)
+    print("\n💾 IMPORTANT: Save this refresh token securely!")
+    print("💡 You can now use this token for permanent authentication")
+    print("\n🔧 Usage example:")
+    print("reddit = praw.Reddit(")
+    print(f"    client_id='{client_id}',")
+    print(f"    client_secret='{client_secret}',")
+    print(f"    refresh_token='{refresh_token}',")
+    print(f"    user_agent='{user_agent}'")
+    print(")")
+    
+except Exception as e:
+    print(f"\n❌ Error: {e}")
+    print("\n💡 Troubleshooting:")
+    print("- Make sure you copied the ENTIRE code parameter")
+    print("- Authorization codes expire in ~10 minutes")
+    print("- Each code can only be used once")
+    print("- Try getting a fresh code and running immediately")
