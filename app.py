@@ -1,5 +1,4 @@
 import praw
-import socket
 import urllib.parse
 import os
 
@@ -20,39 +19,29 @@ reddit = praw.Reddit(
     user_agent=user_agent
 )
 
-# === Step 1: Generate the authorization URL ===
+# === Generate the authorization URL ===
 state = os.urandom(16).hex()
 auth_url = reddit.auth.url(scopes=scopes, state=state, duration='permanent')
 
-print("\n🔗 Open this URL in your browser to authorize:")
+print("\n🔗 STEP 1: Open this URL in your browser to authorize:")
 print(auth_url)
+print("\n📋 STEP 2: After authorizing, you'll be redirected to a URL like:")
+print("http://localhost:8080/?state=...&code=AUTHORIZATION_CODE_HERE")
+print("\n✂️  STEP 3: Copy the 'code' parameter from the redirected URL and paste it below:")
 
-# === Step 2: Start a simple web server to catch the redirect ===
-print("\n🌐 Waiting for the redirect from Reddit...")
+# Get the authorization code manually
+code = input("\nEnter the authorization code: ").strip()
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.bind(("localhost", 8080))
-    s.listen(1)
-    conn, _ = s.accept()
-    with conn:
-        request = conn.recv(1024).decode("utf-8")
-        # Parse the GET request to get the code
-        try:
-            path = request.split(" ")[1]
-            params = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-            code = params["code"][0]
-        except Exception as e:
-            print("❌ Failed to extract authorization code.")
-            print(e)
-            conn.send(b"HTTP/1.1 400 Bad Request\n\nSomething went wrong.")
-            exit(1)
+if not code:
+    print("❌ No code provided. Exiting.")
+    exit(1)
 
-        # Tell the browser it's done
-        conn.send(b"HTTP/1.1 200 OK\n\nAuthorization successful! You can close this window.")
-
-# === Step 3: Use the code to get a permanent refresh token ===
-refresh_token = reddit.auth.authorize(code)
-
-print("\n✅ SUCCESS: Your permanent refresh token is:\n")
-print(refresh_token)
-print("\n💾 Save this refresh token securely. You can now use it to authenticate your bot forever.")
+# === Use the code to get a permanent refresh token ===
+try:
+    refresh_token = reddit.auth.authorize(code)
+    print("\n✅ SUCCESS: Your permanent refresh token is:\n")
+    print(refresh_token)
+    print("\n💾 Save this refresh token securely. You can now use it to authenticate your bot forever.")
+except Exception as e:
+    print(f"❌ Error getting refresh token: {e}")
+    print("💡 Make sure you copied the authorization code correctly.")
