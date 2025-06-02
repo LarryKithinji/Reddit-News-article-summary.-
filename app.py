@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 class Config:
     REDDIT_CLIENT_ID = "p4SHQ57gs2X_bMtaARiJvw"
     REDDIT_CLIENT_SECRET = "PVwX9RTdLj99l1lU9LkvPTEUNmotyQ"
-    REDDIT_REFRESH_TOKEN = "5RD43MOaBnxgF5FgnwYT3PZSbI8iWg"  # Replace with your actual refresh token
+    REDDIT_REFRESH_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IlNIQTI1NjpzS3dsMnlsV0VtMjVmcXhwTU40cWY4MXE2OWFFdWFyMnpLMUdhVGxjdWNZIiwidHlwIjoiSldUIn0.eyJzdWIiOiJsb2lkIiwianRpIjoiem4xaDRLczFqc1M2OFZUSWlQc3E4LWo3TV92NDNRIiwiZXhwIjoxNzQ4OTQzMDAyLjU4NTQwMiwiaWF0IjoxNzQ4ODU2NjAyLjU4NTQwMiwiY2lkIjoiMFJ5MVRhS0dGTHRQNVEiLCJsaWQiOiJ0Ml8xcW43eWZ3eDR0Iiwic2NwIjoiZUp5S1Z0SlNpZ1VFQUFEX193TnpBU2MiLCJsY2EiOjE3NDg4NTY2MDI1NjcsImZsbyI6Nn0.OGm6tUb3QM99SiEc-akEE14M6M7lVWs0WOaetf1Q6vrbzxvEXA4CPaLEirzfxeyPvDJNHJDYAmNtWXDB68hVmPkG-Vhochu-69dzYprarU-UJweg4-kJp27QBL4P_-JySq2ofTxyVH8FPc--z0Y50JJqDe3SshKo2uK_uny1MpNaf0vCYnsvJ8_qtXTwQgLQOp4IuUymxz7PvedvDz-j92VYEnh2gav7EEO3Ref86ixjBiXn96_2iwJJruTAEyO9jrUMhSVY8yaKO3n65TAT2QjzUUxlRjMc5PHDYGV5oIMl3vFi9xmpkyo3NwhHwc6GcktpiMR2Wy2Wi13SSdv1pw"  # Replace with your actual refresh token
     REDDIT_USER_AGENT = "AfricaVoiceBot by u/Old-Star54"
     COMMENT_DELAY = 300  # 5 minutes between comments (increased for rate limits)
     SUBMISSION_DELAY = 120  # 2 minutes between submission checks (increased for rate limits)
