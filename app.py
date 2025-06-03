@@ -165,22 +165,22 @@ def extract_content(self, url: str) -> Optional[str]:
         return None
 
     def _extract_with_multiple_strategies(self, soup):
-    selectors = [
-        'article', '[role="main"]', 'main',
-        '.article-content', '.post-content', '.entry-content',
-        '.content', '.story-body', '.article-body'
-    ]
-    for selector in selectors:
-        container = soup.select_one(selector)
-        if container:
-            content = self._extract_text_from_container(container)
-            if len(content) > 100:
-                return self._remove_spam_content(content)
+        selectors = [
+            'article', '[role="main"]', 'main',
+            '.article-content', '.post-content', '.entry-content',
+            '.content', '.story-body', '.article-body'
+        ]
+        for selector in selectors:
+            container = soup.select_one(selector)
+            if container:
+                content = self._extract_text_from_container(container)
+                if len(content) > 100:
+                    return self._remove_spam_content(content)
 
-    # Fallback to all paragraphs
-    all_paragraphs = soup.find_all('p')
-    content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
-    return self._remove_spam_content(content) if len(content) > 100 else ""
+        # Fallback to all paragraphs
+        all_paragraphs = soup.find_all('p')
+        content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
+        return self._remove_spam_content(content) if len(content) > 100 else ""
 
 def _extract_text_from_container(self, container):
     for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
