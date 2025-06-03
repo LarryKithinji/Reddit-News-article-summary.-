@@ -186,6 +186,48 @@ def _extract_text_from_container(self, container):
     for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
         tag.decompose()
     return container.get_text(strip=True)
+
+def extract_content(self, url: str) -> Optional[str]:
+    if not self._is_valid_url(url):
+        logger.warning(f"Invalid URL: {url}")
+        return None
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+
+        # Attempt via 12ft.io paywall bypass
+        bypass_url = f"https://12ft.io/{url}"
+        response = requests.get(bypass_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            content = self._extract_with_multiple_strategies(soup)
+            if content:
+                logger.info("Extracted using 12ft.io")
+                return content
+            else:
+                logger.warning("12ft.io returned no usable content. Falling back to original.")
+
+        # Fallback to original URL
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            content = self._extract_with_multiple_strategies(soup)
+            if content:
+                logger.info("Extracted using original site.")
+                return content
+            else:
+                logger.warning("Original site content too short or missing.")
+                return None
+        else:
+            logger.warning(f"Failed to fetch original content. Status code: {response.status_code}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching or parsing content: {e}")
+        return None
+
 # Google News extractor class
 class GoogleNewsExtractor:
     def __init__(self):
