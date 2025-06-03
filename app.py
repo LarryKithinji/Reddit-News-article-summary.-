@@ -122,12 +122,35 @@ class ContentExtractor:
             return None
 
 def _is_valid_url(self, url: str) -> bool:
-    try:
-        result = urlparse(url.strip())
-        return result.scheme in ['http', 'https'] and bool(result.netloc)
-    except Exception as e:
-        logger.warning(f"URL parsing error: {url} | {e}")
-        return False
+        try:
+            result = urlparse(url.strip())
+            return result.scheme in ['http', 'https'] and bool(result.netloc)
+        except Exception as e:
+            logger.warning(f"URL parsing error: {url} | {e}")
+            return False
+
+    def extract_content(self, url: str) -> Optional[str]:
+        if not self._is_valid_url(url):
+            logger.warning(f"Invalid URL: {url}")
+            return None
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                content = self._extract_with_multiple_strategies(soup)
+                return content if content else None
+            else:
+                logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching or parsing content: {e}")
+            return None
+
 
     def _extract_with_multiple_strategies(self, soup: BeautifulSoup) -> str:
         article_selectors = [
