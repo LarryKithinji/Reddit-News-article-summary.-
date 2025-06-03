@@ -13,3 +13,4 @@ discord.py
 aiohttp
 # Make sure to run the following command after installing requirements:
 # python -c "import nltk; nltk.download('punkt')"
+newspaper3k>=0.2.8
