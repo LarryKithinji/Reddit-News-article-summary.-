@@ -140,41 +140,52 @@ class ContentExtractor:
             logger.error(f"Error fetching or parsing content: {e}")
             return None
 
+def extract_content(self, url: str) -> Optional[str]:
+    if not self._is_valid_url(url):
+        logger.warning(f"Invalid URL: {url}")
+        return None
+
+    try:
+        # ✅ Use 12ft.io to bypass paywalls
+        bypass_url = f"https://12ft.io/{url}"
+
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
+        response = requests.get(bypass_url, headers=headers, timeout=10)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            content = self._extract_with_multiple_strategies(soup)
+            return content if content else None
+        else:
+            logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error fetching or parsing content: {e}")
+        return None
+
     def _extract_with_multiple_strategies(self, soup):
-        selectors = [
-            'article', '[role="main"]', 'main',
-            '.article-content', '.post-content', '.entry-content',
-            '.content', '.story-body', '.article-body'
-        ]
-        for selector in selectors:
-            container = soup.select_one(selector)
-            if container:
-                content = self._extract_text_from_container(container)
-                if len(content) > 100:
-                    return self._remove_spam_content(content)
+    selectors = [
+        'article', '[role="main"]', 'main',
+        '.article-content', '.post-content', '.entry-content',
+        '.content', '.story-body', '.article-body'
+    ]
+    for selector in selectors:
+        container = soup.select_one(selector)
+        if container:
+            content = self._extract_text_from_container(container)
+            if len(content) > 100:
+                return self._remove_spam_content(content)
 
-        all_paragraphs = soup.find_all('p')
-        content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
-        return self._remove_spam_content(content) if len(content) > 100 else ""
+    # Fallback to all paragraphs
+    all_paragraphs = soup.find_all('p')
+    content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
+    return self._remove_spam_content(content) if len(content) > 100 else ""
 
-    def _extract_text_from_container(self, container):
-        for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
-            tag.decompose()
-        return container.get_text(strip=True)
-
-    def _remove_spam_content(self, content):
-        if not content:
-            return ""
-        cleaned = content
-        for pattern in self.spam_patterns:
-            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r'http[s]?://\S+', '', cleaned)
-        cleaned = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '', cleaned)
-        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-        sentences = [s.strip() for s in cleaned.split('.') if len(s.strip()) > 15]
-        unique_sentences = list(dict.fromkeys(sentences))
-        result = '. '.join(unique_sentences)
-        return result + '.' if result and not result.endswith(('.', '!', '?')) else result
+def _extract_text_from_container(self, container):
+    for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
+        tag.decompose()
+    return container.get_text(strip=True)
 
 # Google News extractor class
 class GoogleNewsExtractor:
