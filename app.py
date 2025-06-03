@@ -186,7 +186,6 @@ def _extract_text_from_container(self, container):
     for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
         tag.decompose()
     return container.get_text(strip=True)
-
 # Google News extractor class
 class GoogleNewsExtractor:
     def __init__(self):
