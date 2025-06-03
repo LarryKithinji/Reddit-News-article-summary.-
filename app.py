@@ -121,12 +121,13 @@ class ContentExtractor:
             logger.error(f"Exception during extraction from {url}: {e}")
             return None
 
-    def _is_valid_url(self, url: str) -> bool:
-        try:
-            result = urlparse(url)
-            return all([result.scheme, result.netloc])
-        except Exception:
-            return False
+def _is_valid_url(self, url: str) -> bool:
+    try:
+        result = urlparse(url.strip())
+        return result.scheme in ['http', 'https'] and bool(result.netloc)
+    except Exception as e:
+        logger.warning(f"URL parsing error: {url} | {e}")
+        return False
 
     def _extract_with_multiple_strategies(self, soup: BeautifulSoup) -> str:
         article_selectors = [
