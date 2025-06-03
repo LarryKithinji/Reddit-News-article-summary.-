@@ -78,155 +78,56 @@ class Config:
 # Content extractor class
 
 class ContentExtractor:
-    def __init__(self):
-        self.spam_patterns = [
-            r'follow us on (twitter|facebook|instagram|linkedin|tiktok)',
-            r'like and subscribe',
-            r'share this (post|article|story)',
-            r'@\w+',
-            r'#\w+',
-            r'subscribe to our newsletter',
-            r'sign up for (our|free|weekly|daily)',
-            r'get our (free|weekly|daily) newsletter',
-            r'join our mailing list',
-            r'sponsored by',
-            r'advertisement',
-            r'promoted content',
-            r'paid partnership',
-            r'affiliate link',
-            r'click here',
-            r'read more at',
-            r'visit our website',
-            r'learn more about',
-            r'contact us (at|for)',
-            r'about the author',
-            r'related articles',
-            r'trending now',
-            r'popular posts',
-            r'you might also like',
-            r'more from',
-            r'we use cookies',
-            r'privacy policy',
-            r'terms of service',
-            r'cookie policy'
-        ]
-
-    def _is_valid_url(self, url: str) -> bool:
-        try:
-            result = urlparse(url.strip())
-            return result.scheme in ['http', 'https'] and bool(result.netloc)
-        except Exception as e:
-            logger.warning(f"URL parsing error: {url} | {e}")
-            return False
-
     def extract_content(self, url: str) -> Optional[str]:
-        if not self._is_valid_url(url):
-            logger.warning(f"Invalid URL: {url}")
-            return None
-
+        """
+        Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
+        and parses visible <p> elements with BeautifulSoup.
+        """
         try:
+            # Bypass paywall using 12ft.io
+            bypass_url = f"https://12ft.io/{url}"
+
             headers = {
-                "User-Agent": "Mozilla/5.0"
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/119.0.0.0 Safari/537.36"
+                )
             }
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                content = self._extract_with_multiple_strategies(soup)
-                return content if content else None
-            else:
-                logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Error fetching or parsing content: {e}")
-            return None
 
-def extract_content(self, url: str) -> Optional[str]:
-    if not self._is_valid_url(url):
-        logger.warning(f"Invalid URL: {url}")
-        return None
+            response = requests.get(bypass_url, headers=headers, timeout=10)
+            response.raise_for_status()
 
-    try:
-        # ✅ Use 12ft.io to bypass paywalls
-        bypass_url = f"https://12ft.io/{url}"
-
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        response = requests.get(bypass_url, headers=headers, timeout=10)
-        if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
-            content = self._extract_with_multiple_strategies(soup)
-            return content if content else None
-        else:
-            logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
-            return None
-    except Exception as e:
-        logger.error(f"Error fetching or parsing content: {e}")
-        return None
 
-    def _extract_with_multiple_strategies(self, soup):
-    selectors = [
-        'article', '[role="main"]', 'main',
-        '.article-content', '.post-content', '.entry-content',
-        '.content', '.story-body', '.article-body'
-    ]
-    for selector in selectors:
-        container = soup.select_one(selector)
-        if container:
-            content = self._extract_text_from_container(container)
+            # Extract paragraph text
+            paragraphs = soup.find_all('p')
+            content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+
             if len(content) > 100:
-                return self._remove_spam_content(content)
-
-    # Fallback: collect all <p> tags if selectors fail
-    all_paragraphs = soup.find_all('p')
-    content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
-    return self._remove_spam_content(content) if len(content) > 100 else ""
-
-def _extract_text_from_container(self, container):
-    for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
-        tag.decompose()
-    return container.get_text(strip=True)
-
-def extract_content(self, url: str) -> Optional[str]:
-    if not self._is_valid_url(url):
-        logger.warning(f"Invalid URL: {url}")
-        return None
-
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-
-        # Attempt via 12ft.io paywall bypass
-        bypass_url = f"https://12ft.io/{url}"
-        response = requests.get(bypass_url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            content = self._extract_with_multiple_strategies(soup)
-            if content:
-                logger.info("Extracted using 12ft.io")
                 return content
             else:
-                logger.warning("12ft.io returned no usable content. Falling back to original.")
-
-        # Fallback to original URL
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            content = self._extract_with_multiple_strategies(soup)
-            if content:
-                logger.info("Extracted using original site.")
-                return content
-            else:
-                logger.warning("Original site content too short or missing.")
+                logger.warning(f"Content too short after parsing: {len(content)} characters")
                 return None
-        else:
-            logger.warning(f"Failed to fetch original content. Status code: {response.status_code}")
+
+        except requests.RequestException as e:
+            logger.error(f"Request error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
             return None
 
-    except Exception as e:
-        logger.error(f"Error fetching or parsing content: {e}")
-        return None
+def extract_content(self, url: str) -> Optional[str]:
+    # Try 12ft.io first
+    content = self._extract_with_url(f"https://12ft.io/{url}")
+    if content:
+        return content
+
+    logger.info("12ft.io failed, falling back to original URL")
+    return self._extract_with_url(url)
+
+def _extract_with_url(self, full_url: str) -> Optional[str]:
+    # ...Same logic as above using requests.get, BeautifulSoup, etc.
 
 # Google News extractor class
 class GoogleNewsExtractor:
