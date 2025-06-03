@@ -595,7 +595,7 @@ class PercentageSummarizer:
 
 class WebhookErrorNotifier:
     def __init__(self, webhook_url: str):
-        self.webhook_url = webhook_url
+        self.webhook_url =' https://discord.com/api/webhooks/1379376565699219486/S4rbFt_5m4aYtNdCJgRZeleIASCK_1WV8RonVpUvjdv9gwF7k_3viqkSV5oSDJw917lC' 
         self.session = None
     
     async def ensure_session(self):
