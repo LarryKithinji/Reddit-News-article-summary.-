@@ -59,10 +59,10 @@ logger = logging.getLogger(__name__)
 # Configuration class
 class Config:
     # Reddit OAuth credentials (use refresh token for persistent authentication)
-    REDDIT_CLIENT_ID = "p4SHQ57gs2X_bMtaARiJvw"
-    REDDIT_CLIENT_SECRET = "PVwX9RTdLj99l1lU9LkvPTEUNmotyQ"
+    REDDIT_CLIENT_ID = "H_0R3y_suLY78pI-mbq-vg"
+    REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
-    REDDIT_REFRESH_TOKEN = "176697242966276-6lkJXzhADRjq6jgEkcAM_yz_F0FJaw"
+    REDDIT_REFRESH_TOKEN = "143460106421528-zgtWnZmgXa1zwCNFUq1E-7Seh7epoQ"
     
     
     # Rate limiting - respect Reddit's API limits
