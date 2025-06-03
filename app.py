@@ -154,11 +154,11 @@ def extract_content(self, url: str) -> Optional[str]:
             return None
 
  def _is_valid_url(self, url):
-        try:
-            result = urlparse(url)
-            return all([result.scheme, result.netloc])
-        except Exception:
-            return False
+    try:
+        result = urlparse(url)
+        return all([result.scheme, result.netloc])
+    except Exception:
+        return False
 
     def _extract_with_multiple_strategies(self, soup):
         article_selectors = [
