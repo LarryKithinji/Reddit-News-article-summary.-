@@ -655,7 +655,7 @@ class RedditBot:
         comment_parts = []
         
         # Header
-        comment_parts.append(f'📰 **Summary for:** "{title}"')
+        comment_parts.append(f'📰 **TLDR for:** "{title}"')
         comment_parts.append("")
         comment_parts.append("---")
         comment_parts.append("")
@@ -689,7 +689,7 @@ class RedditBot:
         
         comment_parts.append("---")
         comment_parts.append("")
-        comment_parts.append("🤖 **AfricaVoice Bot** | Powered by AI summarization")
+        comment_parts.append("🤖**^Powered ^by ^caffeine, ^code, ^and ^the ^spirit ^of ^Africa. ^This ^was ^your ^TL;DR ^from ^r/AfricaVoice.**")
         
         return '\n'.join(comment_parts)
 
