@@ -79,49 +79,38 @@ class Config:
 class ContentExtractor:
     def __init__(self):
         self.spam_patterns = [
-            r'follow us on\s+\w+',
-            r'subscribe to our (newsletter|channel)',
-            r'click here',
-            r'sponsored by',
-            r'privacy policy',
-            r'advertisement',
+            r'follow us on (twitter|facebook|instagram|linkedin|tiktok)',
+            r'like and subscribe',
+            r'share this (post|article|story)',
             r'@\w+',
             r'#\w+',
+            r'subscribe to our newsletter',
+            r'sign up for (our|free|weekly|daily)',
+            r'get our (free|weekly|daily) newsletter',
+            r'join our mailing list',
+            r'sponsored by',
+            r'advertisement',
+            r'promoted content',
+            r'paid partnership',
+            r'affiliate link',
+            r'click here',
             r'read more at',
+            r'visit our website',
+            r'learn more about',
+            r'contact us (at|for)',
+            r'about the author',
+            r'related articles',
+            r'trending now',
+            r'popular posts',
+            r'you might also like',
+            r'more from',
+            r'we use cookies',
+            r'privacy policy',
+            r'terms of service',
+            r'cookie policy'
         ]
 
-    def extract_content(self, url: str) -> Optional[str]:
-        """Main method to extract readable content from a URL."""
-        if not self._is_valid_url(url):
-            logger.warning(f"Invalid URL: {url}")
-            return None
-
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                              " AppleWebKit/537.36 (KHTML, like Gecko)"
-                              " Chrome/119.0.0.0 Safari/537.36"
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200:
-                logger.warning(f"Failed to fetch URL: {url} | Status: {response.status_code}")
-                return None
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-            raw_content = self._extract_with_multiple_strategies(soup)
-            cleaned = self._remove_spam_content(raw_content)
-
-            if len(cleaned) > 50:
-                return cleaned
-            else:
-                logger.info("Extracted content is minimal but returned anyway.")
-                return cleaned or None
-
-        except Exception as e:
-            logger.error(f"Exception during extraction from {url}: {e}")
-            return None
-
-def _is_valid_url(self, url: str) -> bool:
+    def _is_valid_url(self, url: str) -> bool:
         try:
             result = urlparse(url.strip())
             return result.scheme in ['http', 'https'] and bool(result.netloc)
@@ -136,8 +125,7 @@ def _is_valid_url(self, url: str) -> bool:
 
         try:
             headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+                "User-Agent": "Mozilla/5.0"
             }
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code == 200:
@@ -151,88 +139,41 @@ def _is_valid_url(self, url: str) -> bool:
             logger.error(f"Error fetching or parsing content: {e}")
             return None
 
-
-    def _extract_with_multiple_strategies(self, soup: BeautifulSoup) -> str:
-        article_selectors = [
-            'article',
-            '[role="main"]',
-            'main',
-            '.content',
-            '.post-content',
-            '.entry-content',
-            '.article-content',
-            '.article-body',
-            '.story-body',
-            '.text',
+    def _extract_with_multiple_strategies(self, soup):
+        selectors = [
+            'article', '[role="main"]', 'main',
+            '.article-content', '.post-content', '.entry-content',
+            '.content', '.story-body', '.article-body'
         ]
-
-        # Try specific selectors first
-        for selector in article_selectors:
+        for selector in selectors:
             container = soup.select_one(selector)
             if container:
-                text = self._extract_text_from_container(container)
-                if len(text) > 50:
-                    logger.info(f"Content extracted using selector: {selector}")
-                    return text
+                content = self._extract_text_from_container(container)
+                if len(content) > 100:
+                    return self._remove_spam_content(content)
 
-        # Try paragraphs with useful class keywords
-        useful_keywords = ['content', 'article', 'story', 'post', 'text']
-        content_blocks = soup.find_all(['p', 'div'], class_=lambda c: c and any(
-            kw in c.lower() for kw in useful_keywords
-        ))
+        all_paragraphs = soup.find_all('p')
+        content = ' '.join(p.get_text(strip=True) for p in all_paragraphs)
+        return self._remove_spam_content(content) if len(content) > 100 else ""
 
-        if content_blocks:
-            joined = ' '.join(elem.get_text(strip=True) for elem in content_blocks if elem.get_text(strip=True))
-            if len(joined) > 50:
-                logger.info("Content extracted from class-based paragraphs/divs")
-                return joined
-
-        # Fallback to all paragraphs
-        paragraphs = soup.find_all('p')
-        if paragraphs:
-            substantial = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20]
-            if substantial:
-                logger.info("Content extracted from general <p> tags")
-                return ' '.join(substantial)
-
-        # Final fallback: everything in <body> minus nav/ads
-        body = soup.find('body')
-        if body:
-            for tag in body.find_all(['script', 'style', 'nav', 'footer', 'aside', 'header', 'form', 'button']):
-                tag.decompose()
-            fallback_text = body.get_text(separator=' ', strip=True)
-            if len(fallback_text) > 50:
-                logger.info("Content extracted from body fallback")
-                return fallback_text
-
-        return ""
-
-    def _extract_text_from_container(self, container) -> str:
-        for tag in container.find_all(['script', 'style', 'nav', 'footer', 'aside', 'form', 'button']):
+    def _extract_text_from_container(self, container):
+        for tag in container.find_all(['script', 'style', 'nav', 'footer', 'header', 'form', 'button']):
             tag.decompose()
-        return container.get_text(separator=' ', strip=True)
+        return container.get_text(strip=True)
 
-    def _remove_spam_content(self, content: str) -> str:
+    def _remove_spam_content(self, content):
         if not content:
             return ""
-
-        # Remove known spammy phrases
+        cleaned = content
         for pattern in self.spam_patterns:
-            content = re.sub(pattern, '', content, flags=re.IGNORECASE)
-
-        # Remove URLs and emails
-        content = re.sub(r'http[s]?://\S+', '', content)
-        content = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', content)
-
-        # Normalize spaces
-        content = re.sub(r'\s+', ' ', content).strip()
-
-        # Remove repeated or meaningless short sentences
-        sentences = [s.strip() for s in content.split('.') if len(s.strip()) > 10]
-        unique_sentences = list(dict.fromkeys(sentences))  # Preserves order
-
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'http[s]?://\S+', '', cleaned)
+        cleaned = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b', '', cleaned)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        sentences = [s.strip() for s in cleaned.split('.') if len(s.strip()) > 15]
+        unique_sentences = list(dict.fromkeys(sentences))
         result = '. '.join(unique_sentences)
-        return result if result.endswith(('.', '!', '?')) else result + '.'
+        return result + '.' if result and not result.endswith(('.', '!', '?')) else result
 
 # Google News extractor class
 class GoogleNewsExtractor:
