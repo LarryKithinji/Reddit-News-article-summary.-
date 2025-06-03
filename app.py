@@ -83,168 +83,137 @@ class Config:
 class ContentExtractor:
     def __init__(self):
         self.spam_patterns = [
-            # Social media promotions
-            r'follow us on (twitter|facebook|instagram|linkedin|tiktok)',
-            r'like and subscribe',
-            r'share this (post|article|story)',
-            r'@\w+',  # Twitter handles
-            r'#\w+',  # Hashtags
-
-            # Newsletter and subscription spam
-            r'subscribe to our newsletter',
-            r'sign up for (our|free|weekly|daily)',
-            r'get our (free|weekly|daily) newsletter',
-            r'join our mailing list',
-
-            # Advertisement indicators
-            r'sponsored by',
-            r'advertisement',
-            r'promoted content',
-            r'paid partnership',
-            r'affiliate link',
-
-            # Call-to-action spam
+            r'follow us on\s+\w+',
+            r'subscribe to our (newsletter|channel)',
             r'click here',
-            r'read more at',
-            r'visit our website',
-            r'learn more about',
-            r'contact us (at|for)',
-
-            # Footer/header spam
-            r'about the author',
-            r'related articles',
-            r'trending now',
-            r'popular posts',
-            r'you might also like',
-            r'more from',
-
-            # Cookie and privacy notices
-            r'we use cookies',
+            r'sponsored by',
             r'privacy policy',
-            r'terms of service',
-            r'cookie policy'
+            r'advertisement',
+            r'@\w+',
+            r'#\w+',
+            r'read more at',
         ]
 
-def extract_content(self, url: str) -> Optional[str]:
-        """Extracts main content from a webpage using BeautifulSoup."""
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Extract main content by focusing on paragraphs
-                paragraphs = soup.find_all('p')
-                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
-
-                # Validate extracted content length
-                if len(content) > 100:
-                    return content
-                else:
-                    logger.warning(f"Content too short after parsing: {len(content)} characters")
-                    return None
-            else:
-                logger.warning(f"Failed to fetch content. Status code: {response.status_code}")
-                return None
-        except Exception as e:
-            logger.error(f"Error fetching or parsing content: {e}")
+    def extract_content(self, url: str) -> Optional[str]:
+        """Main method to extract readable content from a URL."""
+        if not self._is_valid_url(url):
+            logger.warning(f"Invalid URL: {url}")
             return None
 
- def _is_valid_url(self, url):
-    try:
-        result = urlparse(url)
-        return all([result.scheme, result.netloc])
-    except Exception:
-        return False
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                              " AppleWebKit/537.36 (KHTML, like Gecko)"
+                              " Chrome/119.0.0.0 Safari/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code != 200:
+                logger.warning(f"Failed to fetch URL: {url} | Status: {response.status_code}")
+                return None
 
-    def _extract_with_multiple_strategies(self, soup):
+            soup = BeautifulSoup(response.text, 'html.parser')
+            raw_content = self._extract_with_multiple_strategies(soup)
+            cleaned = self._remove_spam_content(raw_content)
+
+            if len(cleaned) > 50:
+                return cleaned
+            else:
+                logger.info("Extracted content is minimal but returned anyway.")
+                return cleaned or None
+
+        except Exception as e:
+            logger.error(f"Exception during extraction from {url}: {e}")
+            return None
+
+    def _is_valid_url(self, url: str) -> bool:
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except Exception:
+            return False
+
+    def _extract_with_multiple_strategies(self, soup: BeautifulSoup) -> str:
         article_selectors = [
             'article',
             '[role="main"]',
             'main',
-            '.article-content',
+            '.content',
             '.post-content',
             '.entry-content',
-            '.content',
+            '.article-content',
+            '.article-body',
             '.story-body',
-            '.article-body'
+            '.text',
         ]
 
+        # Try specific selectors first
         for selector in article_selectors:
             container = soup.select_one(selector)
             if container:
-                content = self._extract_text_from_container(container)
-                if len(content) > 100:
+                text = self._extract_text_from_container(container)
+                if len(text) > 50:
                     logger.info(f"Content extracted using selector: {selector}")
-                    return content
+                    return text
 
-        content_paragraphs = soup.find_all(['p', 'div'], class_=lambda x: x and any(
-            keyword in str(x).lower() for keyword in ['content', 'article', 'story', 'text', 'body', 'post']
+        # Try paragraphs with useful class keywords
+        useful_keywords = ['content', 'article', 'story', 'post', 'text']
+        content_blocks = soup.find_all(['p', 'div'], class_=lambda c: c and any(
+            kw in c.lower() for kw in useful_keywords
         ))
 
-        if content_paragraphs:
-            content = ' '.join(p.get_text(strip=True) for p in content_paragraphs)
-            if len(content) > 100:
-                logger.info("Content extracted using content-class paragraphs")
-                return content
+        if content_blocks:
+            joined = ' '.join(elem.get_text(strip=True) for elem in content_blocks if elem.get_text(strip=True))
+            if len(joined) > 50:
+                logger.info("Content extracted from class-based paragraphs/divs")
+                return joined
 
-        all_paragraphs = soup.find_all('p')
-        if all_paragraphs:
-            substantial_paragraphs = [p for p in all_paragraphs if len(p.get_text(strip=True)) > 30]
-            if substantial_paragraphs:
-                content = ' '.join(p.get_text(strip=True) for p in substantial_paragraphs)
-                if len(content) > 100:
-                    logger.info("Content extracted using substantial paragraphs")
-                    return content
+        # Fallback to all paragraphs
+        paragraphs = soup.find_all('p')
+        if paragraphs:
+            substantial = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20]
+            if substantial:
+                logger.info("Content extracted from general <p> tags")
+                return ' '.join(substantial)
 
+        # Final fallback: everything in <body> minus nav/ads
         body = soup.find('body')
         if body:
-            for elem in body.find_all(['nav', 'aside', 'header', 'footer', 'form', 'button']):
-                elem.decompose()
-
-            content = body.get_text(strip=True)
-            if len(content) > 100:
-                logger.info("Content extracted using body fallback")
-                return content
+            for tag in body.find_all(['script', 'style', 'nav', 'footer', 'aside', 'header', 'form', 'button']):
+                tag.decompose()
+            fallback_text = body.get_text(separator=' ', strip=True)
+            if len(fallback_text) > 50:
+                logger.info("Content extracted from body fallback")
+                return fallback_text
 
         return ""
 
-    def _extract_text_from_container(self, container):
-        for elem in container.find_all(['nav', 'aside', 'header', 'footer', 'form', 'button', 'script', 'style']):
-            elem.decompose()
-        return container.get_text(strip=True)
+    def _extract_text_from_container(self, container) -> str:
+        for tag in container.find_all(['script', 'style', 'nav', 'footer', 'aside', 'form', 'button']):
+            tag.decompose()
+        return container.get_text(separator=' ', strip=True)
 
-    def _remove_spam_content(self, content):
+    def _remove_spam_content(self, content: str) -> str:
         if not content:
             return ""
 
-        cleaned = content
-
+        # Remove known spammy phrases
         for pattern in self.spam_patterns:
-            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+            content = re.sub(pattern, '', content, flags=re.IGNORECASE)
 
-        cleaned = re.sub(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\,]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', '', cleaned)
-        cleaned = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', cleaned)
-        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        # Remove URLs and emails
+        content = re.sub(r'http[s]?://\S+', '', content)
+        content = re.sub(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', '', content)
 
-        sentences = [s.strip() for s in cleaned.split('.') if s.strip()]
-        meaningful_sentences = []
-        seen_sentences = set()
+        # Normalize spaces
+        content = re.sub(r'\s+', ' ', content).strip()
 
-        for sentence in sentences:
-            if len(sentence) > 15 and sentence.lower() not in seen_sentences:
-                meaningful_sentences.append(sentence)
-                seen_sentences.add(sentence.lower())
+        # Remove repeated or meaningless short sentences
+        sentences = [s.strip() for s in content.split('.') if len(s.strip()) > 10]
+        unique_sentences = list(dict.fromkeys(sentences))  # Preserves order
 
-        result = '. '.join(meaningful_sentences)
+        result = '. '.join(unique_sentences)
+        return result if result.endswith(('.', '!', '?')) else result + '.'
 
-        if result and not result.endswith(('.', '!', '?')):
-            result += '.'
-
-        return result
 # Google News extractor class
 class GoogleNewsExtractor:
     def __init__(self):
