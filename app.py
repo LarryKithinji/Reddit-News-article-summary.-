@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 class Config:
     # Reddit OAuth credentials (use refresh token for persistent authentication)
     REDDIT_CLIENT_ID = ""
-    REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
+    REDDIT_CLIENT_SECRET = ""
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "143460106421528-zgtWnZmgXa1zwCNFUq1E-7Seh7epoQ"
     
