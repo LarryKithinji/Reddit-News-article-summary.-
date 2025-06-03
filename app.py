@@ -126,7 +126,6 @@ def extract_content(self, url: str) -> Optional[str]:
     logger.info("12ft.io failed, falling back to original URL")
     return self._extract_with_url(url)
 
-def _extract_with_url(self, full_url: str) -> Optional[str]:
     
 # Google News extractor class
 class GoogleNewsExtractor:
