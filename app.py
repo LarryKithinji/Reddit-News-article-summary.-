@@ -128,7 +128,6 @@ def extract_content(self, url: str) -> Optional[str]:
 
 def _extract_with_url(self, full_url: str) -> Optional[str]:
     
-
 # Google News extractor class
 class GoogleNewsExtractor:
     def __init__(self):
