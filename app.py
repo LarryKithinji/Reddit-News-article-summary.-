@@ -132,7 +132,7 @@ def _extract_with_url(self, full_url: str) -> Optional[str]:
 class GoogleNewsExtractor:
     def __init__(self):
         self.base_url = "https://news.google.com/rss/search"
-        
+
         # Africa-related keywords for filtering
         self.africa_keywords = [
             # African countries
