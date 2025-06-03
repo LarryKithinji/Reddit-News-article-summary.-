@@ -153,8 +153,7 @@ def extract_content(self, url: str) -> Optional[str]:
             logger.error(f"Error fetching or parsing content: {e}")
             return None
 
-
-    def_is_valid_url(self, url):
+ def _is_valid_url(self, url):
         try:
             result = urlparse(url)
             return all([result.scheme, result.netloc])
