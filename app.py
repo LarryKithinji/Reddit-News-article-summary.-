@@ -154,7 +154,7 @@ def extract_content(self, url: str) -> Optional[str]:
             return None
 
 
-    def _is_valid_url(self, url):
+    def_is_valid_url(self, url):
         try:
             result = urlparse(url)
             return all([result.scheme, result.netloc])
