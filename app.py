@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # Configuration class
 class Config:
     # Reddit OAuth credentials (use refresh token for persistent authentication)
-    REDDIT_CLIENT_ID = "H_0R3y_suLY78pI-mbq-vg"
+    REDDIT_CLIENT_ID = ""
     REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "143460106421528-zgtWnZmgXa1zwCNFUq1E-7Seh7epoQ"
@@ -124,7 +124,7 @@ def extract_content(self, url: str) -> Optional[str]:
         return content
 
     logger.info("12ft.io failed, falling back to original URL")
-    return self._extract_with_url(url)
+    return self._extract_with_url(url)v v u 
 
     
 # Google News extractor class
