@@ -10,6 +10,7 @@ from sumy.summarizers.lsa import LsaSummarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 import urllib.parse
+from urllib.parse import urlparse
 
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
