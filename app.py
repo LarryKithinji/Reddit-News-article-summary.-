@@ -6,7 +6,7 @@ import re
 import sys
 import traceback
 import asyncio
-import aiohttp
+from newspaper import Article
 from typing import Optional, List, Dict
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
@@ -125,60 +125,83 @@ class ContentExtractor:
             r'cookie policy'
         ]
 
-    def extract_content(self, url):
+def extract_content(self, url):
+    try:
+        if not self._is_valid_url(url):
+            logger.error(f"Invalid URL: {url}")
+            return None
+
+        # First attempt: Use newspaper3k
         try:
-            if not self._is_valid_url(url):
-                logger.error(f"Invalid URL: {url}")
-                return None
-
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-            }
-
-            response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-            response.raise_for_status()
-
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-
-                for element in soup(["script", "style", "nav", "header", "footer", "aside",
-                                     "noscript", "iframe", "form", "button"]):
-                    element.decompose()
-
-                content = self._extract_with_multiple_strategies(soup)
-
-                if not content:
-                    logger.warning(f"No content found using any strategy for {url}")
-                    return None
-
+            article = Article(url)
+            article.download()
+            article.parse()
+            content = article.text.strip()
+            if len(content) > 100:
+                logger.info("Content successfully extracted using newspaper3k.")
                 cleaned_content = self._remove_spam_content(content)
-
                 if len(cleaned_content) > 50:
-                    word_count = len(cleaned_content.split())
                     return {
+                        'title': article.title,
                         'content': cleaned_content,
-                        'word_count': word_count,
+                        'word_count': len(cleaned_content.split()),
                         'char_count': len(cleaned_content),
-                        'url': url
+                        'url': url,
+                        'authors': article.authors,
+                        'publish_date': str(article.publish_date) if article.publish_date else None
                     }
-                else:
-                    logger.warning(f"Content too short after cleaning: {len(cleaned_content)} characters from {url}")
-                    return None
-            else:
-                logger.warning(f"Failed to fetch content. Status code: {response.status_code} for {url}")
+        except Exception as e:
+            logger.warning(f"newspaper3k failed for {url}: {e}")
+
+        # Second attempt: Fallback to requests + BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+        }
+
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
+        response.raise_for_status()
+
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            for element in soup(["script", "style", "nav", "header", "footer", "aside",
+                                 "noscript", "iframe", "form", "button"]):
+                element.decompose()
+
+            content = self._extract_with_multiple_strategies(soup)
+
+            if not content:
+                logger.warning(f"No content found using any strategy for {url}")
                 return None
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request error for {url}: {e}")
+            cleaned_content = self._remove_spam_content(content)
+
+            if len(cleaned_content) > 50:
+                word_count = len(cleaned_content.split())
+                return {
+                    'content': cleaned_content,
+                    'word_count': word_count,
+                    'char_count': len(cleaned_content),
+                    'url': url
+                }
+            else:
+                logger.warning(f"Content too short after cleaning: {len(cleaned_content)} characters from {url}")
+                return None
+        else:
+            logger.warning(f"Failed to fetch content. Status code: {response.status_code} for {url}")
             return None
-        except Exception as e:
-            logger.error(f"Unexpected error extracting content from {url}: {e}")
-            return None
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request error for {url}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error extracting content from {url}: {e}")
+        return None
 
     def _is_valid_url(self, url):
         try:
