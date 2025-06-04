@@ -121,7 +121,7 @@ class CommentTracker:
         self.commented_posts.add(post_id)
         self.session_posts.add(post_id)
         self._save_commented_posts()
-        logger.info(f"Marked post {post_id} as commented")
+        logger.info(f"Marked post {post_id} as commented") 
 
 class ContentExtractor:
 
