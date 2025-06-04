@@ -136,11 +136,11 @@ class ContentExtractor:
     return '\n'.join(filtered)
 
     def extract_content(self, url: str) -> Optional[Dict[str, any]]:
-    """
-    Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
-    and parses visible <p> elements with BeautifulSoup.
-    Returns dict with content and metadata.
-    """
+        """
+        Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
+        and parses visible <p> elements with BeautifulSoup.
+        Returns dict with content and metadata.
+        """
     try:
         # Try 12ft.io first
         content = self._extract_with_url(f"https://12ft.io/{url}")
