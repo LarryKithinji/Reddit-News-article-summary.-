@@ -707,41 +707,32 @@ class RedditBot:
         logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
 
     def process_submission(self, submission) -> bool:
-    if self.comment_tracker.has_commented(submission.id):
-        logger.info(f"Already commented on submission {submission.id}, skipping")
-        return False  
-
-        # Skip if no valid URL
-        if not hasattr(submission, 'url') or not submission.url:
-            logger.info(f"Skipping non-link submission {submission.id}")
+        """ Process a single Reddit submission: extract content, summarize, find related news, and comment.
+    Returns True if a comment was posted, False otherwise.
+    """
+    try:
+        # Check if already commented on this submission
+        if self.comment_tracker.has_commented(submission.id):
+            logger.info(f"Already commented on submission {submission.id}, skipping")
             return False
 
-        # Skip self-referential Reddit URLs
-        if 'reddit.com' in submission.url:
-            logger.info(f"Skipping reddit URL {submission.id}")
-            return False
-
-        # Extract article content
+        # Extract content from the submission URL
         content_data = self.extractor.extract_content(submission.url)
         summary = None
 
         if content_data:
-            logger.info(f"Extracted {content_data['word_count']} words from article")
-            if content_data['word_count'] >= 100:
-                summary = self.summarizer.generate_summary(content_data)
-            else:
-                logger.info("Content too short to summarize")
+            summary = self.summarizer.generate_summary(content_data)
         else:
-            logger.info("No content could be extracted from the article")
+            summary = None
 
-        # Fetch related news regardless of summary
+        # Fetch related news
         related_news = self.news_extractor.get_related_news(
             submission.title,
             submission.url,
             content_data['content'] if content_data else None
         )
 
-        # Only post if there's meaningful content
+        # Only post if we have meaningful content
         if summary or related_news:
             self._post_comment(submission, summary, related_news)
             self.comment_tracker.mark_as_commented(submission.id)
