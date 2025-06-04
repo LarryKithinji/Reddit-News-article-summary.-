@@ -136,27 +136,29 @@ class ContentExtractor:
     return '\n'.join(filtered)
 
     def extract_content(self, url: str) -> Optional[Dict[str, any]]:
-        """
-        Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
-        and parses visible <p> elements with BeautifulSoup.
-        Returns dict with content and metadata.
-        """
-        try:
-            # Try 12ft.io first
-            content = self._extract_with_url(f"https://12ft.io/{url}")
-    if content:
-    content = remove_promotional_lines(content)
-    return self._prepare_content_data(content)
-            logger.info("12ft.io failed, falling back to original URL")
-            content = self._extract_with_url(url)
-    if content:
-    content = remove_promotional_lines(content)
-    return self._prepare_content_data(content)
-            return None
+    """
+    Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
+    and parses visible <p> elements with BeautifulSoup.
+    Returns dict with content and metadata.
+    """
+    try:
+        # Try 12ft.io first
+        content = self._extract_with_url(f"https://12ft.io/{url}")
+        if content:
+            content = remove_promotional_lines(content)
+            return self._prepare_content_data(content)
 
-        except Exception as e:
-            logger.error(f"Unexpected error in content extraction: {e}")
-            return None
+        logger.info("12ft.io failed, falling back to original URL")
+        content = self._extract_with_url(url)
+        if content:
+            content = remove_promotional_lines(content)
+            return self._prepare_content_data(content)
+        
+        return None
+
+    except Exception as e:
+        logger.error(f"Unexpected error in content extraction: {e}")
+        return None
 
     def _extract_with_url(self, url: str) -> Optional[str]:
         """Extracts content from a given URL using BeautifulSoup."""
