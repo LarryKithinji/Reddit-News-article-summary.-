@@ -718,21 +718,24 @@ class RedditBot:
             )
 
             # Only post if there's meaningful content
-    if summary or related_news:
-            if not self.comment_tracker.has_commented(submission.id):
-                self._post_comment(submission, summary, related_news)
-                self.comment_tracker.mark_as_commented(submission.id)
-                logger.info(f"Commented on submission {submission.id}")
-                return True
+               # ✅ PROPER INDENT HERE
+            if summary or related_news:
+                if not self.comment_tracker.has_commented(submission.id):
+                    self._post_comment(submission, summary, related_news)
+                    self.comment_tracker.mark_as_commented(submission.id)
+                    logger.info(f"Commented on submission {submission.id}")
+                    return True
+                else:
+                    logger.info(f"Already commented on {submission.id} at posting stage, skipping")
+                    return False
             else:
-                logger.info(f"Already commented on {submission.id} at posting stage, skipping")
+                logger.info(f"Skipping submission {submission.id} - no suitable content found")
                 return False
-        else:
-            logger.info(f"Skipping submission {submission.id} - no suitable content found")
+
+        except Exception as e:
+            logger.error(f"Failed to process submission {submission.id}: {e}")
             return False
-    except Exception as e:
-        logger.error(f"Failed to process submission {submission.id}: {e}")
-        return False
+
  
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Post a comment with improved formatting and rate limiting."""
