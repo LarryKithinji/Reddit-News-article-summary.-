@@ -118,14 +118,36 @@ class ContentExtractor:
             return None
 
 def extract_content(self, url: str) -> Optional[str]:
-    # Try 12ft.io first
-    content = self._extract_with_url(f"https://12ft.io/{url}")
-    if content:
-        return content
+        """Attempts to extract content from 12ft.io first, then falls back to original URL."""
+        # Try 12ft.io first
+        content = self._extract_with_url(f"https://12ft.io/{url}")
+        if content:
+            return content
 
-    logger.info("12ft.io failed, falling back to original URL")
-    return self._extract_with_url(url)v v u 
+        logger.info("12ft.io failed, falling back to original URL")
+        return self._extract_with_url(url)
 
+    def _extract_with_url(self, url: str) -> Optional[str]:
+        """Extracts content from a given URL using BeautifulSoup."""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                paragraphs = soup.find_all('p')
+                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+                if len(content) > 100:
+                    return content
+                else:
+                    logger.warning(f"Content too short: {len(content)} characters")
+            else:
+                logger.warning(f"Request failed: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error extracting content from {url}: {e}")
+        return None
     
 # Google News extractor class
 class GoogleNewsExtractor:
