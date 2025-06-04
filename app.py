@@ -12,7 +12,7 @@ from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 import urllib.parse
 from urllib.parse import urlparse
-
+from readability import Document  # For readability-lxml fallback
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
     """A simple tokenizer that splits text into sentences without NLTK dependency."""
