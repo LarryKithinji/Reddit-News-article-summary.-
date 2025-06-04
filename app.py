@@ -753,7 +753,7 @@ class RedditBot:
     except Exception as e:
         logger.error(f"Failed to process submission {submission.id}: {e}")
         return False
-
+ 
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Post a comment with improved formatting and rate limiting."""
         try:
