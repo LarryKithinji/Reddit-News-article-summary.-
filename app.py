@@ -652,9 +652,21 @@ class RedditBot:
                 # Process new submissions
                 processed_count = 0
                 for submission in subreddit.new(limit=10):
-                    # Skip if already commented
                     if self.comment_tracker.has_commented(submission.id):
                         continue
+                    if time.time() - submission.created_utc > 3600:
+                        continue
+                    if self.process_submission(submission):
+                        processed_count += 1
+                        self.comment_tracker.mark_as_commented(submission.id)
+                        time.sleep(Config.SUBMISSION_DELAY)
+                        if processed_count >= 3:
+                            break
+                logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
+                time.sleep(Config.REQUEST_DELAY)
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                time.sleep(300)
                     
                     # Skip if too old (older than one hour)
                     if time.time() - submission.created_utc > 3600:
