@@ -152,7 +152,6 @@ class ContentExtractor:
     if content:
     content = remove_promotional_lines(content)
     return self._prepare_content_data(content)
-            
             return None
 
         except Exception as e:
