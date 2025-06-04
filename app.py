@@ -121,6 +121,115 @@ class CommentTracker:
 
 class ContentExtractor:
 
+    def extract_content(self, url: str) -> Optional[Dict[str, any]]:
+        """
+        Extracts main content from a webpage using:
+        1. 12ft.io
+        2. Original URL (custom BS4)
+        3. readability-lxml fallback
+        """
+        try:
+            # Attempt 12ft.io
+            logger.info(f"Attempting to extract via 12ft.io: {url}")
+            result = self._try_extraction(f"https://12ft.io/{url}")
+            if result:
+                return result
+
+            # Attempt direct URL
+            logger.info("12ft.io failed or content too short, trying original URL")
+            result = self._try_extraction(url)
+            if result:
+                return result
+
+            # Attempt readability-lxml
+            logger.info("BS4 fallback failed, trying readability-lxml")
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+
+            doc = Document(response.text)
+            html = doc.summary()
+            soup = BeautifulSoup(html, 'html.parser')
+            content = soup.get_text(separator='\n').strip()
+
+            return self._process_extracted_content(content)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in content extraction: {e}")
+            return None
+
+    def _try_extraction(self, url: str) -> Optional[Dict[str, any]]:
+        """Tries extracting with BeautifulSoup and post-processing."""
+        content = self._extract_with_url(url)
+        return self._process_extracted_content(content)
+
+    def _extract_with_url(self, url: str) -> Optional[str]:
+        """Extracts content from a given URL using BeautifulSoup."""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Clean HTML
+            for element in soup(["script", "style", "nav", "header", "footer", 
+                                 "aside", "form", "button", "input"]):
+                element.decompose()
+
+            promo_selectors = [
+                '[class*="ad"]', '[class*="promo"]', '[class*="sponsor"]',
+                '[class*="newsletter"]', '[class*="subscribe"]', '[class*="social"]',
+                '[id*="ad"]', '[id*="promo"]', '[id*="sponsor"]'
+            ]
+            for selector in promo_selectors:
+                for element in soup.select(selector):
+                    element.decompose()
+
+            # Extract paragraphs
+            paragraphs = soup.find_all('p')
+            quality_paragraphs = [
+                p.get_text(strip=True) for p in paragraphs
+                if len(p.get_text(strip=True)) > 20 and not p.get_text(strip=True).isupper()
+            ]
+
+            content = ' '.join(quality_paragraphs)
+            return content if len(content) > 100 else None
+
+        except Exception as e:
+            logger.error(f"Error extracting content from {url}: {e}")
+            return None
+
+    def _process_extracted_content(self, content: Optional[str]) -> Optional[Dict[str, any]]:
+        """Cleans, filters, and validates content before packaging."""
+        if not content or len(content.split()) < 50:
+            return None
+
+        content = self._finalize_content(content)
+        if len(content.split()) < 50:
+            return None
+
+        return self._prepare_content_data(content)
+
+    def _finalize_content(self, content: str) -> str:
+        """Applies full cleaning pipeline to raw content."""
+        content = self.remove_promotional_lines(content)
+        content = self.clean_content_text(content)
+        return content
+
+    def _prepare_content_data(self, content: str) -> Dict[str, any]:
+        """Prepare content data with metadata."""
+        word_count = len(content.split())
+        return {
+            'content': content,
+            'word_count': word_count,
+            'char_count': len(content),
+            'estimated_read_time': max(1, word_count // 200)
+        }
+
     def remove_promotional_lines(self, text: str) -> str:
         """Remove promotional and spammy content from text."""
         promo_patterns = [
@@ -178,110 +287,6 @@ class ContentExtractor:
         content = re.sub(r'@\w+', '', content)
         content = re.sub(r'#\w+', '', content)
         return re.sub(r'\s+', ' ', content).strip()
-
-    def extract_content(self, url: str) -> Optional[Dict[str, any]]:
-        """
-        Extracts main content from a webpage using:
-        1. 12ft.io
-        2. Original URL (custom BS4)
-        3. readability-lxml fallback
-        """
-        try:
-            logger.info(f"Attempting to extract via 12ft.io: {url}")
-            content = self._extract_with_url(f"https://12ft.io/{url}")
-            if content:
-                content = self._finalize_content(content)
-                if len(content) > 100:
-                    return self._prepare_content_data(content)
-
-            logger.info("12ft.io failed or content too short, trying original URL")
-            content = self._extract_with_url(url)
-            if content:
-                content = self._finalize_content(content)
-                if len(content) > 100:
-                    return self._prepare_content_data(content)
-
-            logger.info("BeautifulSoup fallback failed, trying readability-lxml")
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
-
-            doc = Document(response.text)
-            html = doc.summary()
-            soup = BeautifulSoup(html, 'html.parser')
-            content = soup.get_text(separator='\n').strip()
-
-            if len(content.split()) < 50:
-                logger.warning("Readability output too short.")
-                return None
-
-            content = self._finalize_content(content)
-            return self._prepare_content_data(content)
-
-        except Exception as e:
-            logger.error(f"Unexpected error in content extraction: {e}")
-            return None
-
-    def _extract_with_url(self, url: str) -> Optional[str]:
-        """Extracts content from a given URL using BeautifulSoup."""
-        try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                              "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-            }
-            response = requests.get(url, headers=headers, timeout=15)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            for element in soup(["script", "style", "nav", "header", "footer", 
-                                 "aside", "form", "button", "input"]):
-                element.decompose()
-
-            promo_selectors = [
-                '[class*="ad"]', '[class*="promo"]', '[class*="sponsor"]',
-                '[class*="newsletter"]', '[class*="subscribe"]', '[class*="social"]',
-                '[id*="ad"]', '[id*="promo"]', '[id*="sponsor"]'
-            ]
-            for selector in promo_selectors:
-                for element in soup.select(selector):
-                    element.decompose()
-
-            paragraphs = soup.find_all('p')
-            quality_paragraphs = [
-                p.get_text(strip=True) for p in paragraphs
-                if len(p.get_text(strip=True)) > 20 and not p.get_text(strip=True).isupper()
-            ]
-
-            content = ' '.join(quality_paragraphs)
-            if len(content) > 100:
-                return content
-            else:
-                logger.warning(f"Content too short: {len(content)} characters")
-                return None
-
-        except requests.RequestException as e:
-            logger.error(f"Request error for {url}: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error extracting content from {url}: {e}")
-            return None
-
-    def _prepare_content_data(self, content: str) -> Dict[str, any]:
-        """Prepare content data with metadata."""
-        word_count = len(content.split())
-        return {
-            'content': content,
-            'word_count': word_count,
-            'char_count': len(content),
-            'estimated_read_time': max(1, word_count // 200)
-        }
-
-    def _finalize_content(self, content: str) -> str:
-        """Applies full cleaning pipeline to raw content."""
-        content = self.remove_promotional_lines(content)
-        content = self.clean_content_text(content)
-        return content
-        }
 
 # Google News extractor class
 class GoogleNewsExtractor:
