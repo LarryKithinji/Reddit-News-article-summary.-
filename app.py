@@ -3,6 +3,7 @@ import requests
 import logging
 import time
 import re
+import json
 from typing import Optional, List, Dict
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
@@ -15,27 +16,27 @@ from urllib.parse import urlparse
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
     """A simple tokenizer that splits text into sentences without NLTK dependency."""
-    
+
     def __init__(self, language="english"):
         self.language = language
         # Common sentence ending patterns
         self.sentence_endings = re.compile(r'[.!?]+\s+')
-    
+
     def to_sentences(self, text):
         """Split text into sentences using regex patterns."""
         # Clean up the text
         text = text.strip()
         if not text:
             return []
-        
+
         # Split by sentence endings but keep the endings
         sentences = self.sentence_endings.split(text)
-        
+
         # Filter out empty sentences and very short ones
         sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
-        
+
         return sentences
-    
+
     def to_words(self, sentence):
         """Split sentence into words."""
         # Simple word tokenization
@@ -60,73 +61,87 @@ class Config:
     REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
-    subreddit = reddit.subreddit("AfricaVoice")
-    
     
     # Rate limiting - respect Reddit's API limits
-    COMMENT_DELAY = 720  # 3 minutes between comments (conservative)
-    SUBMISSION_DELAY = 270  # 1.5 minutes between submission checks
-    REQUEST_DELAY = 180 # 180 seconds between API requests
-    
+    COMMENT_DELAY = 720  # 12 minutes between comments (conservative)
+    SUBMISSION_DELAY = 300  # 5 minutes between submission checks
+    REQUEST_DELAY = 180  # 3 minutes between API requests
+
     # Language and summarization settings
     LANGUAGE = "english"
     SENTENCES_COUNT = 5
-    
+
     # Percentage-based summary settings
     MIN_SUMMARY_PERCENTAGE = 20  # Minimum 20% of original content
     MAX_SUMMARY_PERCENTAGE = 40  # Maximum 40% of original content
 
-# Content extractor class
+# Comment tracking class
+class CommentTracker:
+    """Handles tracking of commented posts to prevent duplicates."""
+    
+    def __init__(self, filename="commented_posts.json"):
+        self.filename = filename
+        self.commented_posts = self._load_commented_posts()
+    
+    def _load_commented_posts(self) -> set:
+        """Load previously commented post IDs from file."""
+        try:
+            with open(self.filename, 'r') as f:
+                data = json.load(f)
+                return set(data.get('posts', []))
+        except FileNotFoundError:
+            logger.info("No previous comment history found, starting fresh")
+            return set()
+        except json.JSONDecodeError:
+            logger.warning("Corrupted comment history file, starting fresh")
+            return set()
+    
+    def _save_commented_posts(self):
+        """Save commented post IDs to file."""
+        try:
+            data = {
+                'posts': list(self.commented_posts),
+                'last_updated': time.time()
+            }
+            with open(self.filename, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save comment history: {e}")
+    
+    def has_commented(self, post_id: str) -> bool:
+        """Check if we've already commented on this post."""
+        return post_id in self.commented_posts
+    
+    def mark_as_commented(self, post_id: str):
+        """Mark a post as commented."""
+        self.commented_posts.add(post_id)
+        self._save_commented_posts()
+        logger.info(f"Marked post {post_id} as commented")
 
+# Content extractor class
 class ContentExtractor:
-    def extract_content(self, url: str) -> Optional[str]:
+    def extract_content(self, url: str) -> Optional[Dict[str, any]]:
         """
         Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
         and parses visible <p> elements with BeautifulSoup.
+        Returns dict with content and metadata.
         """
         try:
-            # Bypass paywall using 12ft.io
-            bypass_url = f"https://12ft.io/{url}"
+            # Try 12ft.io first
+            content = self._extract_with_url(f"https://12ft.io/{url}")
+            if content:
+                return self._prepare_content_data(content)
 
-            headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/119.0.0.0 Safari/537.36"
-                )
-            }
-
-            response = requests.get(bypass_url, headers=headers, timeout=10)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            # Extract paragraph text
-            paragraphs = soup.find_all('p')
-            content = ' '.join(p.get_text(strip=True) for p in paragraphs)
-
-            if len(content) > 100:
-                return content
-            else:
-                logger.warning(f"Content too short after parsing: {len(content)} characters")
-                return None
-
-        except requests.RequestException as e:
-            logger.error(f"Request error: {e}")
+            logger.info("12ft.io failed, falling back to original URL")
+            content = self._extract_with_url(url)
+            if content:
+                return self._prepare_content_data(content)
+            
             return None
+
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error in content extraction: {e}")
             return None
-
-    def extract_content(self, url: str) -> Optional[str]:
-        """Attempts to extract content from 12ft.io first, then falls back to original URL."""
-        # Try 12ft.io first
-        content = self._extract_with_url(f"https://12ft.io/{url}")
-        if content:
-            return content
-
-        logger.info("12ft.io failed, falling back to original URL")
-        return self._extract_with_url(url)
 
     def _extract_with_url(self, url: str) -> Optional[str]:
         """Extracts content from a given URL using BeautifulSoup."""
@@ -135,26 +150,46 @@ class ContentExtractor:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                               "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             }
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                paragraphs = soup.find_all('p')
-                content = ' '.join(p.get_text(strip=True) for p in paragraphs)
-                if len(content) > 100:
-                    return content
-                else:
-                    logger.warning(f"Content too short: {len(content)} characters")
+            response = requests.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Remove script and style elements
+            for script in soup(["script", "style"]):
+                script.decompose()
+            
+            # Extract paragraph text
+            paragraphs = soup.find_all('p')
+            content = ' '.join(p.get_text(strip=True) for p in paragraphs)
+            
+            if len(content) > 100:
+                return content
             else:
-                logger.warning(f"Request failed: {response.status_code}")
+                logger.warning(f"Content too short: {len(content)} characters")
+                return None
+
+        except requests.RequestException as e:
+            logger.error(f"Request error for {url}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Error extracting content from {url}: {e}")
-        return None
-    
+            return None
+
+    def _prepare_content_data(self, content: str) -> Dict[str, any]:
+        """Prepare content data with metadata."""
+        word_count = len(content.split())
+        return {
+            'content': content,
+            'word_count': word_count,
+            'char_count': len(content)
+        }
+
 # Google News extractor class
 class GoogleNewsExtractor:
     def __init__(self):
         self.base_url = "https://news.google.com/rss/search"
-
+        
         # Africa-related keywords for filtering
         self.africa_keywords = [
             # African countries
@@ -176,14 +211,14 @@ class GoogleNewsExtractor:
             'lagos', 'cairo', 'johannesburg', 'cape town', 'nairobi', 'casablanca', 'tunis',
             'algiers', 'accra', 'addis ababa', 'khartoum', 'kampala', 'dar es salaam', 'harare'
         ]
-    
+
     def get_related_news(self, query: str, exclude_url: str = None, exclude_content: str = None, max_results: int = 3) -> List[Dict[str, str]]:
         """Extract Africa-related news, excluding the original URL and similar content."""
         try:
             # Clean and encode the query, add Africa context
             clean_query = re.sub(r'[^\w\s]', '', query)
             africa_enhanced_query = f"{clean_query} Africa OR African"
-            
+
             # Construct Google News RSS URL
             params = {
                 'q': africa_enhanced_query,
@@ -191,86 +226,85 @@ class GoogleNewsExtractor:
                 'gl': 'US',
                 'ceid': 'US:en'
             }
-            
+
             url = f"{self.base_url}?{'&'.join([f'{k}={urllib.parse.quote(str(v))}' for k, v in params.items()])}"
-            
+
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                               "(KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
             }
-            
+
             response = requests.get(url, headers=headers, timeout=15)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'xml')
-                items = soup.find_all('item')
-                
-                news_links = []
-                for item in items:
-                    title = item.find('title')
-                    link = item.find('link')
-                    description = item.find('description')
-                    
-                    if title and link:
-                        actual_url = self._extract_actual_url(link.text)
-                        title_text = title.text.strip()
-                        description_text = description.text.strip() if description else ""
-                        
-                        # Skip if this is the same as the original submission URL
-                        if exclude_url and self._urls_match(actual_url, exclude_url):
-                            continue
-                            
-                        # Skip if URL contains the original domain
-                        if exclude_url and self._same_domain(actual_url, exclude_url):
-                            continue
-                        
-                        # Skip if content is too similar to original
-                        if exclude_content and self._content_too_similar(title_text, exclude_content):
-                            continue
-                        
-                        # Check if the news item is Africa-related
-                        if self._is_africa_related(title_text, description_text):
-                            news_links.append({
-                                'title': title_text,
-                                'url': actual_url
-                            })
-                            
-                            if len(news_links) >= max_results:
-                                break
-                
-                logger.info(f"Found {len(news_links)} Africa-related news articles")
-                return news_links
-            else:
-                logger.warning(f"Failed to fetch Google News. Status code: {response.status_code}")
-                return []
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'xml')
+            items = soup.find_all('item')
+
+            news_links = []
+            for item in items:
+                title = item.find('title')
+                link = item.find('link')
+                description = item.find('description')
+
+                if title and link:
+                    actual_url = self._extract_actual_url(link.text)
+                    title_text = title.text.strip()
+                    description_text = description.text.strip() if description else ""
+
+                    # Skip if this is the same as the original submission URL
+                    if exclude_url and self._urls_match(actual_url, exclude_url):
+                        continue
+
+                    # Skip if URL contains the original domain
+                    if exclude_url and self._same_domain(actual_url, exclude_url):
+                        continue
+
+                    # Skip if content is too similar to original
+                    if exclude_content and self._content_too_similar(title_text, exclude_content):
+                        continue
+
+                    # Check if the news item is Africa-related
+                    if self._is_africa_related(title_text, description_text):
+                        news_links.append({
+                            'title': title_text,
+                            'url': actual_url
+                        })
+
+                        if len(news_links) >= max_results:
+                            break
+
+            logger.info(f"Found {len(news_links)} Africa-related news articles")
+            return news_links
+            
         except Exception as e:
             logger.error(f"Error fetching Google News: {e}")
             return []
-    
+
     def _content_too_similar(self, title: str, original_content: str) -> bool:
         """Check if news title is too similar to original content."""
         if not original_content:
             return False
-        
+
         title_words = set(title.lower().split())
         content_words = set(original_content.lower().split()[:50])  # First 50 words
-        
+
         # Calculate similarity
         if len(title_words) == 0:
             return False
-        
+
         similarity = len(title_words.intersection(content_words)) / len(title_words)
-        return similarity > 0.7  # 40% similarity threshold
-    
+        return similarity > 0.7  # 70% similarity threshold
+
     def _is_africa_related(self, title: str, description: str) -> bool:
         """Check if news item is related to Africa or African diaspora."""
         combined_text = f"{title} {description}".lower()
-        
+
         for keyword in self.africa_keywords:
             if keyword.lower() in combined_text:
                 return True
-        
+
         return False
-    
+
     def _urls_match(self, url1: str, url2: str) -> bool:
         """Check if two URLs are essentially the same."""
         try:
@@ -279,17 +313,16 @@ class GoogleNewsExtractor:
             return url1_clean == url2_clean
         except:
             return False
-    
+
     def _same_domain(self, url1: str, url2: str) -> bool:
         """Check if two URLs are from the same domain."""
         try:
-            from urllib.parse import urlparse
             domain1 = urlparse(url1).netloc.lower().replace('www.', '')
             domain2 = urlparse(url2).netloc.lower().replace('www.', '')
             return domain1 == domain2
         except:
             return False
-    
+
     def _extract_actual_url(self, google_url: str) -> str:
         """Extract actual URL from Google redirect URL."""
         try:
@@ -299,27 +332,6 @@ class GoogleNewsExtractor:
                 return google_url
         except:
             return google_url
-
-# ✅ Load already-commented post IDs once at startup
-try:
-    with open("commented.txt", "r") as f:
-        already_commented = set(f.read().splitlines())
-except FileNotFoundError:
-    already_commented = set()
-
-# 🔁 Main loop to scan and comment
-for submission in subreddit.new(limit=10):
-    if submission.id not in already_commented:
-        # 👉 Your bot logic here (e.g., extract content, generate summary, etc.)
-        summary = "This is a summary of the post."
-
-        # 💬 Leave a comment
-        submission.reply(summary)
-
-        # ✅ Save the ID so we don’t comment again
-        with open("commented.txt", "a") as f:
-            f.write(f"{submission.id}\n")
-        already_commented.add(submission.id)
 
 # Percentage-based Summarizer class
 class PercentageSummarizer:
@@ -332,13 +344,13 @@ class PercentageSummarizer:
         try:
             content = content_data['content']
             original_word_count = content_data['word_count']
-            
+
             # Calculate target word count based on percentage
             min_target_words = int(original_word_count * (Config.MIN_SUMMARY_PERCENTAGE / 100))
             max_target_words = int(original_word_count * (Config.MAX_SUMMARY_PERCENTAGE / 100))
-            
+
             logger.info(f"Original: {original_word_count} words, Target: {min_target_words}-{max_target_words} words")
-            
+
             # Use Sumy for initial summarization
             parser = PlaintextParser.from_string(content, self.tokenizer)
             summarizer = LsaSummarizer(Stemmer(self.language))
@@ -346,7 +358,7 @@ class PercentageSummarizer:
 
             # Start with estimated sentence count
             estimated_sentences = max(3, min_target_words // 25)  # Rough estimate: 25 words per sentence
-            
+
             # Generate summary with iterative approach
             summary = self._generate_optimal_summary(
                 parser, summarizer, estimated_sentences, min_target_words, max_target_words
@@ -360,7 +372,7 @@ class PercentageSummarizer:
             else:
                 logger.warning("Failed to generate adequate summary")
                 return None
-                
+
         except Exception as e:
             logger.error(f"Error generating percentage-based summary: {e}")
             return None
@@ -369,84 +381,84 @@ class PercentageSummarizer:
         """Generate summary with optimal length using iterative approach."""
         best_summary = None
         best_score = float('inf')
-        
+
         # Try different sentence counts
         for sentence_count in range(max(2, initial_sentences - 2), initial_sentences + 5):
             try:
                 sentences = summarizer(parser.document, sentence_count)
                 summary = ' '.join(str(sentence) for sentence in sentences)
                 summary = self._fix_grammar(summary)
-                
+
                 word_count = len(summary.split())
-                
+
                 # Check if within acceptable range
                 if min_words <= word_count <= max_words:
                     return summary
-                
+
                 # Calculate score (prefer closer to target range)
                 if word_count < min_words:
                     score = min_words - word_count
                 else:
                     score = word_count - max_words
-                
+
                 # Keep track of best summary
                 if score < best_score and word_count >= min_words * 0.8:  # Allow 20% flexibility
                     best_score = score
                     best_summary = summary
-                    
+
             except Exception as e:
                 logger.warning(f"Error with {sentence_count} sentences: {e}")
                 continue
-        
+
         return best_summary
 
     def _fix_grammar(self, text: str) -> str:
         """Fix common grammatical errors and punctuation issues in the summary."""
         if not text:
             return text
-            
+
         # Initial cleanup - fix spacing issues
         text = re.sub(r'\s+', ' ', text).strip()
-        
+
         # Fix common punctuation spacing issues first
         text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
         text = re.sub(r'([.!?,:;])\s*([A-Za-z])', r'\1 \2', text)  # Add space after punctuation
         text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
-        
+
         # Fix multiple punctuation marks
         text = re.sub(r'[.]{2,}', '.', text)  # Multiple periods to single
         text = re.sub(r'[!]{2,}', '!', text)  # Multiple exclamations to single
         text = re.sub(r'[?]{2,}', '?', text)  # Multiple questions to single
-        
+
         # Fix comma spacing
         text = re.sub(r'\s*,\s*', ', ', text)  # Standardize comma spacing
         text = re.sub(r',\s*,', ',', text)  # Remove duplicate commas
-        
+
         # Fix semicolon and colon spacing
         text = re.sub(r'\s*;\s*', '; ', text)  # Standardize semicolon spacing
         text = re.sub(r'\s*:\s*', ': ', text)  # Standardize colon spacing
-        
+
         # Split into sentences for proper capitalization
         sentences = re.split(r'(?<=[.!?])\s+', text)
         fixed_sentences = []
-        
+
         for sentence in sentences:
             sentence = sentence.strip()
             if sentence:
                 # Capitalize first letter of each sentence
                 sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
-                
+
                 # Fix specific punctuation issues within sentences
                 sentence = self._fix_sentence_punctuation(sentence)
-                
+
                 fixed_sentences.append(sentence)
-        
+
         # Join sentences properly
         result = ' '.join(fixed_sentences)
-        
+
         # Final cleanup
         result = re.sub(r'\s+', ' ', result).strip()  # Final space cleanup
-        
+
         # Ensure proper ending punctuation
         if result and not result.endswith(('.', '!', '?')):
             # Check if the last word suggests it should be a question
@@ -454,90 +466,71 @@ class PercentageSummarizer:
                 result += '?'
             else:
                 result += '.'
-        
+
         # Fix any remaining spacing issues around punctuation
         result = re.sub(r'\s+([.!?,:;])', r'\1', result)
         result = re.sub(r'([.!?,:;])([A-Za-z])', r'\1 \2', result)
-        
+
         return result
-    
+
     def _fix_sentence_punctuation(self, sentence: str) -> str:
         """Fix punctuation issues within a single sentence."""
         # Fix apostrophes and contractions
         sentence = re.sub(r"\s+'([sStTdDmMrReEvV])\b", r"'\1", sentence)  # Fix spaced contractions
         sentence = re.sub(r"\b([a-zA-Z]+)\s+'\s*([sStT])\b", r"\1'\2", sentence)  # Fix possessives
-        
+
         # Fix quotation marks
         sentence = re.sub(r'\s+"([^"]*?)"\s*', r' "\1" ', sentence)  # Standard quote spacing
         sentence = re.sub(r"(\w)\s+'", r"\1'", sentence)  # Fix spaced single quotes
-        
+
         # Fix parentheses spacing
         sentence = re.sub(r'\s*\(\s*', ' (', sentence)
         sentence = re.sub(r'\s*\)\s*', ') ', sentence)
         sentence = re.sub(r'^\s*\(\s*', '(', sentence)  # Start of sentence
-        
+
         # Fix hyphen and dash spacing
         sentence = re.sub(r'\s*-\s*', '-', sentence)  # Remove spaces around hyphens in compound words
         sentence = re.sub(r'(\w)\s*--\s*(\w)', r'\1 - \2', sentence)  # Fix em dashes
-        
+
         # Fix ellipsis
         sentence = re.sub(r'\.{3,}', '...', sentence)
         sentence = re.sub(r'\s*\.\.\.\s*', '... ', sentence)
-        
+
         # Fix numbers and decimals
         sentence = re.sub(r'(\d)\s*\.\s*(\d)', r'\1.\2', sentence)  # Fix decimal points
         sentence = re.sub(r'(\d)\s*,\s*(\d{3})', r'\1,\2', sentence)  # Fix number formatting
-        
+
         # Clean up any double spaces created
         sentence = re.sub(r'\s+', ' ', sentence)
-        
+
         return sentence.strip()
 
-
-# Reddit Bot class with proper OAuth
+# Reddit Bot class with proper OAuth and duplicate prevention
 class RedditBot:
     def __init__(self):
         self.extractor = ContentExtractor()
         self.summarizer = PercentageSummarizer()
         self.news_extractor = GoogleNewsExtractor()
+        self.comment_tracker = CommentTracker()
         self.reddit = None
-        self.last_submission_time = time.time()
+        self.last_submission_time = 0
         self._initialize_reddit_connection()
 
     def _initialize_reddit_connection(self):
         """Initialize Reddit connection with proper OAuth authentication."""
         try:
-            if Config.REDDIT_REFRESH_TOKEN:
-                # Use refresh token for persistent authentication (preferred)
-                self.reddit = praw.Reddit(
-                    client_id=Config.REDDIT_CLIENT_ID,
-                    client_secret=Config.REDDIT_CLIENT_SECRET,
-                    refresh_token=Config.REDDIT_REFRESH_TOKEN,
-                    user_agent=Config.REDDIT_USER_AGENT
-                )
-                logger.info("Authenticated using refresh token")
-            else:
-                # Fallback to username/password (will generate refresh token)
-                self.reddit = praw.Reddit(
-                    client_id=Config.REDDIT_CLIENT_ID,
-                    client_secret=Config.REDDIT_CLIENT_SECRET,
-                    username=Config.REDDIT_USERNAME,
-                    password=Config.REDDIT_PASSWORD,
-                    user_agent=Config.REDDIT_USER_AGENT
-                )
-                logger.info("Authenticated using username/password")
-                
-                # Get and save refresh token for future use
-                try:
-                    refresh_token = self.reddit.auth.refresh_token
-                    logger.info(f"Save this refresh token for future use: {refresh_token}")
-                except:
-                    logger.warning("Could not retrieve refresh token")
-
+            # Use refresh token for persistent authentication
+            self.reddit = praw.Reddit(
+                client_id=Config.REDDIT_CLIENT_ID,
+                client_secret=Config.REDDIT_CLIENT_SECRET,
+                refresh_token=Config.REDDIT_REFRESH_TOKEN,
+                user_agent=Config.REDDIT_USER_AGENT
+            )
+            
             # Verify authentication
             me = self.reddit.user.me()
             logger.info(f"Successfully authenticated as: {me.name}")
-            
+
         except Exception as e:
             logger.error(f"Reddit authentication failed: {str(e)}")
             raise
@@ -550,77 +543,113 @@ class RedditBot:
         while True:
             try:
                 # Process new submissions
-                for submission in subreddit.new(limit=5):  # Reduced limit for rate limiting
-                    if submission.created_utc > self.last_submission_time:
-                        self._process_submission(submission)
-                        self.last_submission_time = submission.created_utc
+                processed_count = 0
+                for submission in subreddit.new(limit=10):
+                    # Skip if already commented
+                    if self.comment_tracker.has_commented(submission.id):
+                        continue
+                    
+                    # Skip if too old (older than 24 hours)
+                    if time.time() - submission.created_utc > 86400:
+                        continue
+                    
+                    # Process the submission
+                    if self._process_submission(submission):
+                        processed_count += 1
+                        # Mark as commented even if we didn't comment to avoid reprocessing
+                        self.comment_tracker.mark_as_commented(submission.id)
+                        
+                        # Rate limiting between submissions
                         time.sleep(Config.SUBMISSION_DELAY)
-                
+                        
+                        # Limit processing to avoid overwhelming
+                        if processed_count >= 3:
+                            break
+
                 # Sleep before next check
+                logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
                 time.sleep(Config.REQUEST_DELAY)
-                
+
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(300)  # 5 minute cooldown on error
 
-    def _process_submission(self, submission):
+    def _process_submission(self, submission) -> bool:
         """Process a single submission with improved content extraction and summarization."""
         try:
             logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
-            
+
+            # Skip if not a link post
+            if not hasattr(submission, 'url') or not submission.url:
+                logger.info(f"Skipping non-link submission {submission.id}")
+                return False
+
+            # Skip reddit URLs
+            if 'reddit.com' in submission.url:
+                logger.info(f"Skipping reddit URL {submission.id}")
+                return False
+
             # Extract content with metadata
             content_data = self.extractor.extract_content(submission.url)
             summary = None
-            
+
             if content_data:
                 logger.info(f"Extracted {content_data['word_count']} words from article")
-                summary = self.summarizer.generate_summary(content_data)
+                # Only summarize if content is substantial enough
+                if content_data['word_count'] >= 100:
+                    summary = self.summarizer.generate_summary(content_data)
+                else:
+                    logger.info("Content too short to summarize")
             else:
                 logger.info("No content could be extracted from the article")
-            
+
             # Get related Africa-focused news
             related_news = self.news_extractor.get_related_news(
                 submission.title, 
                 submission.url, 
                 content_data['content'] if content_data else None
             )
-            
+
             # Only post if we have meaningful content
             if summary or related_news:
                 self._post_comment(submission, summary, related_news)
+                return True
             else:
                 logger.info(f"Skipping submission {submission.id} - no suitable content found")
-                
+                return False
+
         except Exception as e:
             logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
+            return False
 
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Post a comment with improved formatting and rate limiting."""
         try:
             formatted_comment = self._format_comment(submission.title, summary, related_news)
-            
+
             # Respect rate limits
             time.sleep(Config.REQUEST_DELAY)
-            
+
             submission.reply(formatted_comment)
             logger.info(f"Successfully posted comment on submission {submission.id}")
-            
+
             # Wait before next comment
             time.sleep(Config.COMMENT_DELAY)
-            
+
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
+            raise  # Re-raise to handle in calling function
 
     def _format_comment(self, title: str, summary: Optional[str], related_news: List[Dict[str, str]]) -> str:
         """Format the comment with improved structure."""
         comment_parts = []
-        
+
         # Header
         comment_parts.append(f'📰 **TLDR for:** "{title}"')
         comment_parts.append("")
         comment_parts.append("---")
         comment_parts.append("")
-        
+
         # Summary section
         if summary:
             comment_parts.append("💡 **Article Summary:**")
@@ -632,14 +661,14 @@ class RedditBot:
             comment_parts.append("")
             comment_parts.append("> Unable to extract and summarize content from the original article.")
             comment_parts.append("")
-        
+
         comment_parts.append("---")
         comment_parts.append("")
-        
+
         # Related news section
         comment_parts.append("📰 **Related Africa News:**")
         comment_parts.append("")
-        
+
         if related_news:
             for news_item in related_news:
                 comment_parts.append(f"🔗 [{news_item['title']}]({news_item['url']})")
@@ -647,11 +676,11 @@ class RedditBot:
         else:
             comment_parts.append("🔗 No additional Africa-related news found at this time.")
             comment_parts.append("")
-        
+
         comment_parts.append("---")
         comment_parts.append("")
-        comment_parts.append("🤖**^Powered ^by ^caffeine, ^code, ^and ^the ^spirit ^of ^Africa. ^This ^was ^your ^TL;DR ^from ^r/AfricaVoice.**")
-        
+        comment_parts.append("🤖 **^Powered ^by ^caffeine, ^code, ^and ^the ^spirit ^of ^Africa. ^This ^was ^your ^TL;DR ^from ^r/AfricaVoice.**")
+
         return '\n'.join(comment_parts)
 
 # Run the bot
