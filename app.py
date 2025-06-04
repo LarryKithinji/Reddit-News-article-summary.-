@@ -76,15 +76,19 @@ class Config:
     MAX_SUMMARY_PERCENTAGE = 40  # Maximum 40% of original content
 
 # Comment tracking class
+
 class CommentTracker:
-    """Handles tracking of commented posts to prevent duplicates."""
-    
-    def __init__(self, filename="commented_posts.json"):
+    """Tracks commented posts across sessions and current runtime."""
+
+    def __init__(self, reddit: praw.Reddit, filename="commented_posts.json"):
+        self.reddit = reddit
         self.filename = filename
-        self.commented_posts = self._load_commented_posts()
-    
-    def _load_commented_posts(self) -> set:
-        """Load previously commented post IDs from file."""
+        self.commented_posts: Set[str] = self._load_commented_posts()
+        self.session_posts: Set[str] = set()  # Runtime-only
+        self._load_recent_comments_from_reddit()
+
+    def _load_commented_posts(self) -> Set[str]:
+        """Load previously commented post IDs from disk."""
         try:
             with open(self.filename, 'r') as f:
                 data = json.load(f)
@@ -95,9 +99,9 @@ class CommentTracker:
         except json.JSONDecodeError:
             logger.warning("Corrupted comment history file, starting fresh")
             return set()
-    
+
     def _save_commented_posts(self):
-        """Save commented post IDs to file."""
+        """Persist commented post IDs to disk."""
         try:
             data = {
                 'posts': list(self.commented_posts),
@@ -107,14 +111,33 @@ class CommentTracker:
                 json.dump(data, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save comment history: {e}")
-    
+
+    def _load_recent_comments_from_reddit(self):
+        """Fetch recent comments made by the bot to update commented_posts."""
+        try:
+            two_hours_ago = time.time() - 7200  # 2 hours in seconds
+            user = self.reddit.user.me()
+            logger.info(f"Fetching recent comments for user: {user.name}")
+
+            for comment in self.reddit.redditor(user.name).comments.new(limit=100):
+                if comment.created_utc >= two_hours_ago:
+                    # Get the submission ID the comment was made on
+                    post_id = comment.submission.id
+                    self.commented_posts.add(post_id)
+
+            logger.info("Successfully loaded recent Reddit comment history")
+
+        except Exception as e:
+            logger.warning(f"Could not fetch recent comments: {e}")
+
     def has_commented(self, post_id: str) -> bool:
-        """Check if we've already commented on this post."""
-        return post_id in self.commented_posts
-    
+        """Check if this post has been processed (file, Reddit, or session)."""
+        return post_id in self.commented_posts or post_id in self.session_posts
+
     def mark_as_commented(self, post_id: str):
-        """Mark a post as commented."""
+        """Mark a post as commented in both memory and file."""
         self.commented_posts.add(post_id)
+        self.session_posts.add(post_id)
         self._save_commented_posts()
         logger.info(f"Marked post {post_id} as commented")
 
