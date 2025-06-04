@@ -12,19 +12,6 @@ from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
 import urllib.parse
 from urllib.parse import urlparse
-import os
-
-LAST_SEEN_FILE = "last_seen_submission.txt"
-
-def load_last_seen_time():
-    if os.path.exists(LAST_SEEN_FILE):
-        with open(LAST_SEEN_FILE, "r") as f:
-            return float(f.read().strip())
-    return 0.0  # Default to 0 (the epoch) if file doesn't exist
-
-def save_last_seen_time(timestamp):
-    with open(LAST_SEEN_FILE, "w") as f:
-        f.write(str(timestamp))
 
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
