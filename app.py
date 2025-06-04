@@ -719,7 +719,6 @@ class RedditBot:
 
             # Only post if there's meaningful content
     if summary or related_news:
-            # Double-check before posting to avoid duplicates
             if not self.comment_tracker.has_commented(submission.id):
                 self._post_comment(submission, summary, related_news)
                 self.comment_tracker.mark_as_commented(submission.id)
@@ -731,7 +730,6 @@ class RedditBot:
         else:
             logger.info(f"Skipping submission {submission.id} - no suitable content found")
             return False
-
     except Exception as e:
         logger.error(f"Failed to process submission {submission.id}: {e}")
         return False
