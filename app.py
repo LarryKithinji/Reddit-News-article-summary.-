@@ -706,10 +706,10 @@ class RedditBot:
     try:
         logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
 
-        # Check if already commented on this submission
-        if self.comment_tracker.has_commented(submission.id):
-            logger.info(f"Already commented on submission {submission.id}, skipping")
-            return False
+    def process_submission(self, submission) -> bool:
+    if self.comment_tracker.has_commented(submission.id):
+        logger.info(f"Already commented on submission {submission.id}, skipping")
+        return False  
 
         # Skip if no valid URL
         if not hasattr(submission, 'url') or not submission.url:
