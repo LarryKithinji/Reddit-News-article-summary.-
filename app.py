@@ -740,7 +740,7 @@ class RedditBot:
 
     except Exception as e:
         logger.error(f"Failed to process submission {submission.id}: {e}")
-        return False
+        return False 
  
             # Get related Africa-focused news
             related_news = self.news_extractor.get_related_news(
