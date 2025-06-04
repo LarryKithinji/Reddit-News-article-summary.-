@@ -60,6 +60,7 @@ class Config:
     REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
+    subreddit = reddit.subreddit("AfricaVoice")
     
     
     # Rate limiting - respect Reddit's API limits
