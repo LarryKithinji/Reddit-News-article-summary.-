@@ -120,20 +120,104 @@ class CommentTracker:
 
 # Content extractor class
 class ContentExtractor:
+    
+    def remove_promotional_lines(self, text: str) -> str:
+        """Remove promotional and spammy content from text."""
+        promo_patterns = [
+            # Subscription and newsletter patterns
+            r'subscribe\s+(to|for|now)', r'newsletter', r'email\s+list',
+            r'join\s+(our|the)\s+(community|list)', r'sign\s+up',
+            
+            # Advertising patterns
+            r'sponsored\s+by', r'advertis(e|ing|ement)', r'promo\s+code',
+            r'discount\s+code', r'coupon', r'special\s+offer',
+            
+            # Social media and engagement
+            r'follow\s+us', r'like\s+us', r'share\s+this', r'tweet\s+this',
+            r'facebook', r'twitter', r'instagram', r'linkedin',
+            
+            # Call-to-action patterns
+            r'click\s+here', r'visit\s+our', r'buy\s+now', r'shop\s+now',
+            r'learn\s+more', r'get\s+started', r'find\s+out\s+more',
+            r'read\s+more', r'see\s+more', r'view\s+more',
+            
+            # Partnership and sponsorship
+            r'partnered\s+with', r'our\s+sponsor', r'brought\s+to\s+you\s+by',
+            
+            # Media and content promotion
+            r'watch\s+(now|more|video)', r'listen\s+to', r'podcast',
+            r'free\s+(trial|download)', r'download\s+now',
+            
+            # Website and navigation
+            r'home\s+page', r'contact\s+us', r'about\s+us', r'privacy\s+policy',
+            r'terms\s+of\s+(service|use)', r'cookie\s+policy',
+            
+            # Comments and user interaction
+            r'leave\s+a\s+comment', r'what\s+do\s+you\s+think',
+            r'tell\s+us\s+what', r'let\s+us\s+know',
+            
+            # Additional spam indicators
+            r'limited\s+time', r'act\s+now', r'don\'t\s+miss',
+            r'exclusive\s+offer', r'best\s+deal', r'lowest\s+price'
+        ]
+        
+        lines = text.split('\n')
+        filtered_lines = []
+        
+        for line in lines:
+            line_stripped = line.strip()
+            
+            # Skip empty lines
+            if not line_stripped:
+                continue
+                
+            # Skip very short lines (likely navigation or spam)
+            if len(line_stripped) < 10:
+                continue
+                
+            # Check against promotional patterns
+            is_promotional = any(
+                re.search(pattern, line_stripped, re.IGNORECASE) 
+                for pattern in promo_patterns
+            )
+            
+            # Skip lines that are all caps (often spam)
+            if line_stripped.isupper() and len(line_stripped) > 5:
+                continue
+                
+            # Skip lines with excessive punctuation
+            punct_ratio = sum(1 for c in line_stripped if c in '!?*@#$%^&+=') / len(line_stripped)
+            if punct_ratio > 0.2:
+                continue
+                
+            if not is_promotional:
+                filtered_lines.append(line_stripped)
+        
+        return '\n'.join(filtered_lines)
 
-   def remove_promotional_lines(text):
-    promo_patterns = [
-        r'subscribe', r'sponsored by', r'follow us', r'sign up', r'advertis', r'newsletter',
-        r'click here', r'visit our', r'buy now', r'promo code', r'learn more', r'partnered with',
-        r'watch (now|more)', r'free trial', r'free download', r'get started', r'our sponsor', r'shop now'
-    ]
-    lines = text.split('\n')
-    filtered = [
-        line for line in lines
-        if not any(re.search(pattern, line, re.IGNORECASE) for pattern in promo_patterns)
-        and len(line.strip()) > 0
-    ]
-    return '\n'.join(filtered)
+    def clean_content_text(self, content: str) -> str:
+        """Additional content cleaning beyond promotional removal."""
+        # Remove multiple consecutive whitespaces
+        content = re.sub(r'\s+', ' ', content)
+        
+        # Remove common website artifacts
+        artifacts = [
+            r'\bjavascript\b', r'\bcookies?\b', r'\bprivacy policy\b',
+            r'\bterms of service\b', r'\bterms of use\b', r'\bmenu\b',
+            r'\bnavigation\b', r'\bheader\b', r'\bfooter\b', r'\bsidebar\b'
+        ]
+        
+        for artifact in artifacts:
+            content = re.sub(artifact, '', content, flags=re.IGNORECASE)
+        
+        # Remove social media handles and hashtags
+        content = re.sub(r'@\w+', '', content)
+        content = re.sub(r'#\w+', '', content)
+        
+        # Clean up extra whitespace again
+        content = re.sub(r'\s+', ' ', content).strip()
+        
+        return content
 
     def extract_content(self, url: str) -> Optional[Dict[str, any]]:
         """
@@ -141,25 +225,29 @@ class ContentExtractor:
         and parses visible <p> elements with BeautifulSoup.
         Returns dict with content and metadata.
         """
-    try:
-        # Try 12ft.io first
-        content = self._extract_with_url(f"https://12ft.io/{url}")
-        if content:
-            content = remove_promotional_lines(content)
-            return self._prepare_content_data(content)
+        try:
+            # Try 12ft.io first
+            content = self._extract_with_url(f"https://12ft.io/{url}")
+            if content:
+                content = self.remove_promotional_lines(content)
+                content = self.clean_content_text(content)
+                if len(content) > 100:  # Ensure we still have substantial content
+                    return self._prepare_content_data(content)
 
-        logger.info("12ft.io failed, falling back to original URL")
-        content = self._extract_with_url(url)
-        if content:
-            content = remove_promotional_lines(content)
-            return self._prepare_content_data(content)
+            logger.info("12ft.io failed, falling back to original URL")
+            content = self._extract_with_url(url)
+            if content:
+                content = self.remove_promotional_lines(content)
+                content = self.clean_content_text(content)
+                if len(content) > 100:
+                    return self._prepare_content_data(content)
 
-        return None
+            return None
 
-    except Exception as e:
-        logger.error(f"Unexpected error in content extraction: {e}")
-        return None
- 
+        except Exception as e:
+            logger.error(f"Unexpected error in content extraction: {e}")
+            return None
+
     def _extract_with_url(self, url: str) -> Optional[str]:
         """Extracts content from a given URL using BeautifulSoup."""
         try:
@@ -169,17 +257,38 @@ class ContentExtractor:
             }
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-            
+
             soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Remove script, style, and other non-content elements
+            for element in soup(["script", "style", "nav", "header", "footer", 
+                               "aside", "form", "button", "input"]):
+                element.decompose()
+
+            # Remove elements with promotional classes/ids
+            promo_selectors = [
+                '[class*="ad"]', '[class*="promo"]', '[class*="sponsor"]',
+                '[class*="newsletter"]', '[class*="subscribe"]', '[class*="social"]',
+                '[id*="ad"]', '[id*="promo"]', '[id*="sponsor"]'
+            ]
             
-            # Remove script and style elements
-            for script in soup(["script", "style"]):
-                script.decompose()
-            
-            # Extract paragraph text
+            for selector in promo_selectors:
+                for element in soup.select(selector):
+                    element.decompose()
+
+            # Extract paragraph text with better content prioritization
             paragraphs = soup.find_all('p')
-            content = ' '.join(p.get_text(strip=True) for p in paragraphs)
             
+            # Filter paragraphs by content quality
+            quality_paragraphs = []
+            for p in paragraphs:
+                text = p.get_text(strip=True)
+                # Only include paragraphs with substantial content
+                if len(text) > 20 and not text.isupper():
+                    quality_paragraphs.append(text)
+
+            content = ' '.join(quality_paragraphs)
+
             if len(content) > 100:
                 return content
             else:
@@ -199,7 +308,8 @@ class ContentExtractor:
         return {
             'content': content,
             'word_count': word_count,
-            'char_count': len(content)
+            'char_count': len(content),
+            'estimated_read_time': max(1, word_count // 200)  # Rough reading time in minutes
         }
 
 # Google News extractor class
