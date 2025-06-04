@@ -742,24 +742,33 @@ class RedditBot:
         logger.error(f"Failed to process submission {submission.id}: {e}")
         return False
  
-            # Get related Africa-focused news
-            related_news = self.news_extractor.get_related_news(
-                submission.title, 
-                submission.url, 
-                content_data['content'] if content_data else None
-            )
+                content_data = self.extractor.extract_content(submission.url)
+    summary = None
 
-            # Only post if we have meaningful content
-            if summary or related_news:
-                self._post_comment(submission, summary, related_news)
-                return True
-            else:
-                logger.info(f"Skipping submission {submission.id} - no suitable content found")
-                return False
+    if content_data:
+        summary = self.summarizer.generate_summary(content_data)
+    else:
+        summary = None
 
-        except Exception as e:
-            logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
-            return False
+    # --- THIS IS WHERE YOU FETCH RELATED NEWS ---
+    related_news = self.news_extractor.get_related_news(
+        submission.title, 
+        submission.url, 
+        content_data['content'] if content_data else None
+    )
+
+    # Only post if we have meaningful content
+    if summary or related_news:
+        self._post_comment(submission, summary, related_news)
+        self.comment_tracker.mark_as_commented(submission.id)
+        return True
+    else:
+        logger.info(f"Skipping submission {submission.id} - no suitable content found")
+        return False
+
+except Exception as e:
+    logger.error(f"Failed to process submission {submission.id}: {e}")
+    return False
 
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Post a comment with improved formatting and rate limiting."""
