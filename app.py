@@ -277,6 +277,27 @@ class GoogleNewsExtractor:
         except:
             return google_url
 
+# ✅ Load already-commented post IDs once at startup
+try:
+    with open("commented.txt", "r") as f:
+        already_commented = set(f.read().splitlines())
+except FileNotFoundError:
+    already_commented = set()
+
+# 🔁 Main loop to scan and comment
+for submission in subreddit.new(limit=10):
+    if submission.id not in already_commented:
+        # 👉 Your bot logic here (e.g., extract content, generate summary, etc.)
+        summary = "This is a summary of the post."
+
+        # 💬 Leave a comment
+        submission.reply(summary)
+
+        # ✅ Save the ID so we don’t comment again
+        with open("commented.txt", "a") as f:
+            f.write(f"{submission.id}\n")
+        already_commented.add(submission.id)
+
 # Percentage-based Summarizer class
 class PercentageSummarizer:
     def __init__(self):
