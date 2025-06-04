@@ -120,6 +120,21 @@ class CommentTracker:
 
 # Content extractor class
 class ContentExtractor:
+
+   def remove_promotional_lines(text):
+    promo_patterns = [
+        r'subscribe', r'sponsored by', r'follow us', r'sign up', r'advertis', r'newsletter',
+        r'click here', r'visit our', r'buy now', r'promo code', r'learn more', r'partnered with',
+        r'watch (now|more)', r'free trial', r'free download', r'get started', r'our sponsor', r'shop now'
+    ]
+    lines = text.split('\n')
+    filtered = [
+        line for line in lines
+        if not any(re.search(pattern, line, re.IGNORECASE) for pattern in promo_patterns)
+        and len(line.strip()) > 0
+    ]
+    return '\n'.join(filtered)
+
     def extract_content(self, url: str) -> Optional[Dict[str, any]]:
         """
         Extracts main content from a webpage using 12ft.io (ad/paywall bypass)
