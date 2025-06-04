@@ -647,8 +647,8 @@ class RedditBot:
         logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
         subreddit = self.reddit.subreddit(subreddit_name)
 
-        while True:
-    try:
+      while True:
+        try:
         # Process new submissions
         processed_count = 0
         for submission in subreddit.new(limit=10):
