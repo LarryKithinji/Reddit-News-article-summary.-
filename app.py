@@ -643,41 +643,41 @@ class RedditBot:
             raise
 
     def run(self, subreddit_name: str):
-        """Main loop to monitor the subreddit and process new submissions."""
-        logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
-        subreddit = self.reddit.subreddit(subreddit_name)
+    """Main loop to monitor the subreddit and process new submissions."""
+    logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
+    subreddit = self.reddit.subreddit(subreddit_name)
 
-       while True:
-    try:
-        processed_count = 0
-        for submission in subreddit.new(limit=10):
-            if self.comment_tracker.has_commented(submission.id):
-                continue
+    while True:
+        try:
+            processed_count = 0
+            for submission in subreddit.new(limit=10):
+                if self.comment_tracker.has_commented(submission.id):
+                    continue
 
-            # Skip if too old (older than one hour)
-            if time.time() - submission.created_utc > 3600:
-                continue
+                # Skip if too old (older than one hour)
+                if time.time() - submission.created_utc > 3600:
+                    continue
 
-            # Process the submission
-            if self.process_submission(submission):
-                processed_count += 1
-                # Mark as commented even if we didn't comment to avoid reprocessing
-                self.comment_tracker.mark_as_commented(submission.id)
+                # Process the submission
+                if self.process_submission(submission):
+                    processed_count += 1
+                    # Mark as commented even if we didn't comment to avoid reprocessing
+                    self.comment_tracker.mark_as_commented(submission.id)
 
-                # Rate limiting between submissions
-                time.sleep(Config.SUBMISSION_DELAY)
+                    # Rate limiting between submissions
+                    time.sleep(Config.SUBMISSION_DELAY)
 
-                # Limit processing to avoid overwhelming
-                if processed_count >= 3:
-                    break
+                    # Limit processing to avoid overwhelming
+                    if processed_count >= 3:
+                        break
 
-        # Sleep before next check
-        logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
-        time.sleep(Config.REQUEST_DELAY)
+            # Sleep before next check
+            logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
+            time.sleep(Config.REQUEST_DELAY)
 
-    except Exception as e:
-        logger.error(f"Error in main loop: {e}")
-        time.sleep(300)  # 5 minute cooldown on error
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+            time.sleep(300)  # 5 minute cooldown on error
 
 
     def process_submission(self, submission) -> bool:
