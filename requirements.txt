@@ -15,3 +15,4 @@ aiohttp
 # python -c "import nltk; nltk.download('punkt')"
 newspaper3k
 lxml
+readability-lxml
