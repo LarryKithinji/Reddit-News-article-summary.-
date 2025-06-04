@@ -145,12 +145,14 @@ class ContentExtractor:
             # Try 12ft.io first
             content = self._extract_with_url(f"https://12ft.io/{url}")
             if content:
-                return self._prepare_content_data(content)
+    content = remove_promotional_lines(content)
+    return self._prepare_content_data(content)
 
             logger.info("12ft.io failed, falling back to original URL")
             content = self._extract_with_url(url)
             if content:
-                return self._prepare_content_data(content)
+    content = remove_promotional_lines(content)
+    return self._prepare_content_data(content)
             
             return None
 
