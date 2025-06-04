@@ -647,11 +647,11 @@ class RedditBot:
         logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
         subreddit = self.reddit.subreddit(subreddit_name)
 
-       while True:
+       while True: 
         try:
           # Process new submissions
-        processed_count = 0
-        for submission in subreddit.new(limit=10):
+          processed_count = 0
+         for submission in subreddit.new(limit=10):
             if self.comment_tracker.has_commented(submission.id):
                 continue
 
@@ -691,7 +691,7 @@ class RedditBot:
                 logger.info(f"Already commented on submission {submission.id}, skipping")
                 return False
 
-            # Skip if no valid URL
+            # Skip if no valid URLwhile True:
             if not hasattr(submission, 'url') or not submission.url:
                 logger.info(f"Skipping non-link submission {submission.id}")
                 return False
