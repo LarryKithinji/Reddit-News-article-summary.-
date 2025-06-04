@@ -117,7 +117,7 @@ class ContentExtractor:
             logger.error(f"Unexpected error: {e}")
             return None
 
-   def extract_content(self, url: str) -> Optional[str]:
+    def extract_content(self, url: str) -> Optional[str]:
         """Attempts to extract content from 12ft.io first, then falls back to original URL."""
         # Try 12ft.io first
         content = self._extract_with_url(f"https://12ft.io/{url}")
