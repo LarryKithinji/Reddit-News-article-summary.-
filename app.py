@@ -681,7 +681,7 @@ class RedditBot:
                         continue
                     
                     # Process the submission
-                    if self._process_submission(submission):
+                    if self.process_submission(submission):
                         processed_count += 1
                         # Mark as commented even if we didn't comment to avoid reprocessing
                         self.comment_tracker.mark_as_commented(submission.id)
