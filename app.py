@@ -648,50 +648,37 @@ class RedditBot:
         subreddit = self.reddit.subreddit(subreddit_name)
 
         while True:
-            try:
-                # Process new submissions
-                processed_count = 0
-                for submission in subreddit.new(limit=10):
-                    if self.comment_tracker.has_commented(submission.id):
-                        continue
-                    if time.time() - submission.created_utc > 3600:
-                        continue
-                    if self.process_submission(submission):
-                        processed_count += 1
-                        self.comment_tracker.mark_as_commented(submission.id)
-                        time.sleep(Config.SUBMISSION_DELAY)
-                        if processed_count >= 3:
-                            break
-                logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
-                time.sleep(Config.REQUEST_DELAY)
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                time.sleep(300)
-                    
-                    # Skip if too old (older than one hour)
-                    if time.time() - submission.created_utc > 3600:
-                        continue
-                    
-                    # Process the submission
-                    if self.process_submission(submission):
-                        processed_count += 1
-                        # Mark as commented even if we didn't comment to avoid reprocessing
-                        self.comment_tracker.mark_as_commented(submission.id)
-                        
-                        # Rate limiting between submissions
-                        time.sleep(Config.SUBMISSION_DELAY)
-                        
-                        # Limit processing to avoid overwhelming
-                        if processed_count >= 3:
-                            break
+    try:
+        # Process new submissions
+        processed_count = 0
+        for submission in subreddit.new(limit=10):
+            if self.comment_tracker.has_commented(submission.id):
+                continue
 
-                # Sleep before next check
-                logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
-                time.sleep(Config.REQUEST_DELAY)
+            # Skip if too old (older than one hour)
+            if time.time() - submission.created_utc > 3600:
+                continue
 
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                time.sleep(300)  # 5 minute cooldown on error
+            # Process the submission
+            if self.process_submission(submission):
+                processed_count += 1
+                # Mark as commented even if we didn't comment to avoid reprocessing
+                self.comment_tracker.mark_as_commented(submission.id)
+
+                # Rate limiting between submissions
+                time.sleep(Config.SUBMISSION_DELAY)
+
+                # Limit processing to avoid overwhelming
+                if processed_count >= 3:
+                    break
+
+        # Sleep before next check
+        logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
+        time.sleep(Config.REQUEST_DELAY)
+
+    except Exception as e:
+        logger.error(f"Error in main loop: {e}")
+        time.sleep(300)  # 5 minute cooldown on error
 
     def process_submission(self, submission) -> bool:
         """Process a single submission with improved content extraction and summarization."""
