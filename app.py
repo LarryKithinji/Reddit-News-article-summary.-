@@ -159,7 +159,7 @@ class ContentExtractor:
     except Exception as e:
         logger.error(f"Unexpected error in content extraction: {e}")
         return None
-
+ 
     def _extract_with_url(self, url: str) -> Optional[str]:
         """Extracts content from a given URL using BeautifulSoup."""
         try:
