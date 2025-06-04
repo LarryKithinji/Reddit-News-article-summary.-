@@ -643,7 +643,7 @@ class RedditBot:
             raise
 
     def run(self, subreddit_name: str):
-    """Main loop to monitor the subreddit and process new submissions."""
+        """Main loop to monitor the subreddit and process new submissions."""
     logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
     subreddit = self.reddit.subreddit(subreddit_name)
 
