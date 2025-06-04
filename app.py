@@ -718,9 +718,9 @@ class RedditBot:
             )
 
             # Only post if there's meaningful content
-            if summary or related_news:
-    # Double-check before posting to avoid duplicates
-    if not self.comment_tracker.has_commented(submission.id):
+    if summary or related_news:
+        # Double-check before posting to avoid duplicates
+        if not self.comment_tracker.has_commented(submission.id):
         self._post_comment(submission, summary, related_news)
         self.comment_tracker.mark_as_commented(submission.id)
         logger.info(f"Commented on submission {submission.id}")
