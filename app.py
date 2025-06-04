@@ -702,33 +702,42 @@ class RedditBot:
                 time.sleep(300)  # 5 minute cooldown on error
 
     def _process_submission(self, submission) -> bool:
-        """Process a single submission with improved content extraction and summarization."""
-        try:
-            logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
+    """Process a single submission with improved content extraction and summarization."""
+    try:
+        logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
 
-            # Skip if not a link post
-            if not hasattr(submission, 'url') or not submission.url:
-                logger.info(f"Skipping non-link submission {submission.id}")
-                return False
+        if not hasattr(submission, 'url') or not submission.url:
+            logger.info(f"Skipping non-link submission {submission.id}")
+            return False
 
-            # Skip reddit URLs
-            if 'reddit.com' in submission.url:
-                logger.info(f"Skipping reddit URL {submission.id}")
-                return False
+        if 'reddit.com' in submission.url:
+            logger.info(f"Skipping reddit URL {submission.id}")
+            return False
 
-            # Extract content with metadata
-            content_data = self.extractor.extract_content(submission.url)
-            summary = None
+        content_data = self.extractor.extract_content(submission.url)
+        summary = None
 
-            if content_data:
-                logger.info(f"Extracted {content_data['word_count']} words from article")
-                # Only summarize if content is substantial enough
-                if content_data['word_count'] >= 100:
-                    summary = self.summarizer.generate_summary(content_data)
-                else:
-                    logger.info("Content too short to summarize")
+        if content_data:
+            logger.info(f"Extracted {content_data['word_count']} words from article")
+            if content_data['word_count'] >= 100:
+                summary = self.summarizer.generate_summary(content_data)
             else:
-                logger.info("No content could be extracted from the article")
+                logger.info("Content too short to summarize")
+        else:
+            logger.info("No content could be extracted from the article")
+
+        # Only reply if a summary was created
+        if summary:
+            comment = f"**Summary:**\n\n{summary}\n\n^[I'm a bot summarizing African news articles.]"
+            submission.reply(comment)
+            self.comment_tracker.mark_as_commented(submission.id)
+            return True
+
+        return False
+
+    except Exception as e:
+        logger.error(f"Failed to process submission {submission.id}: {e}")
+        return False
 
             # Get related Africa-focused news
             related_news = self.news_extractor.get_related_news(
