@@ -566,8 +566,8 @@ class RedditBot:
                     if self.comment_tracker.has_commented(submission.id):
                         continue
                     
-                    # Skip if too old (older than 24 hours)
-                    if time.time() - submission.created_utc > 86400:
+                    # Skip if too old (older than one hour)
+                    if time.time() - submission.created_utc > 3600:
                         continue
                     
                     # Process the submission
