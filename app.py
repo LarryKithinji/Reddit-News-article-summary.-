@@ -648,7 +648,7 @@ class RedditBot:
         subreddit = self.reddit.subreddit(subreddit_name)
 
       while True:
-        try:
+       try:
         # Process new submissions
         processed_count = 0
         for submission in subreddit.new(limit=10):
