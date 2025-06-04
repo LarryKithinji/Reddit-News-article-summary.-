@@ -648,10 +648,9 @@ class RedditBot:
         subreddit = self.reddit.subreddit(subreddit_name)
 
        while True:
-        try:
-            processed_count = 0
-            for submission in subreddit.new(limit=10):
-         for submission in subreddit.new(limit=10):
+    try:
+        processed_count = 0
+        for submission in subreddit.new(limit=10):
             if self.comment_tracker.has_commented(submission.id):
                 continue
 
