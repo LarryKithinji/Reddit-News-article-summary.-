@@ -702,11 +702,6 @@ class RedditBot:
                 time.sleep(300)  # 5 minute cooldown on error
 
     def process_submission(self, submission) -> bool:
-        """Process a single submission with improved content extraction and summarization."""
-    try:
-        logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
-
-    def process_submission(self, submission) -> bool:
         """ Process a single Reddit submission: extract content, summarize, find related news, and comment.
     Returns True if a comment was posted, False otherwise.
     """
