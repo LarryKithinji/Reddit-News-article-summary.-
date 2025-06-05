@@ -619,7 +619,6 @@ class RedditBot:
         self.extractor = ContentExtractor()
         self.summarizer = PercentageSummarizer()
         self.news_extractor = GoogleNewsExtractor()
-        self.comment_tracker = CommentTracker()
         self.reddit = None
         self.last_submission_time = 0
         self._initialize_reddit_connection()
