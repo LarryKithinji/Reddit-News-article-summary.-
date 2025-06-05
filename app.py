@@ -639,7 +639,7 @@ class RedditBot:
             me = self.reddit.user.me()
             logger.info(f"Successfully authenticated as: {me.name}")
 
-       except Exception as e:
+        except Exception as e:
             logger.error(f"Reddit authentication failed: {str(e)}")
        raise
 
