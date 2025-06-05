@@ -640,7 +640,7 @@ class RedditBot:
         logger.info(f"Successfully authenticated as: {me.name}")
 
        except Exception as e:
-           logger.error(f"Reddit authentication failed: {str(e)}")
+        logger.error(f"Reddit authentication failed: {str(e)}")
        raise
 
     def run(self, subreddit_name: str):
