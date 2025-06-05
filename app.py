@@ -645,27 +645,23 @@ class RedditBot:
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
+    subreddit_name = "AfricaVoice"
     logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
     subreddit = self.reddit.subreddit(subreddit_name)
 
     while True:
         try:
             processed_count = 0
-
             for submission in subreddit.new(limit=10):
                 if self.comment_tracker.has_commented(submission.id):
                     continue
 
-                # Skip if too old (older than one hour)
                 if time.time() - submission.created_utc > 3600:
                     continue
 
-                # Process the submission
                 if self.process_submission(submission):
                     processed_count += 1
                     self.comment_tracker.mark_as_commented(submission.id)
-
-                    # Rate limiting between submissions
                     time.sleep(Config.SUBMISSION_DELAY)
 
                     if processed_count >= 3:
@@ -676,7 +672,7 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Error in main loop: {e}")
-            time.sleep(300)  # 5-minute cooldown on error(300)  # 5 minute cooldown on error
+            time.sleep(300)
 
     def process_submission(self, submission) -> bool:
         """Process a single submission with improved content extraction and summarization."""
