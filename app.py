@@ -674,7 +674,7 @@ class RedditBot:
 
             # Sleep before next check
                 logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
-            time.sleep(Config.REQUEST_DELAY)
+     time.sleep(Config.REQUEST_DELAY)
 
             except Exception as e:
                  logger.error(f"Error in main loop: {e}")
