@@ -645,9 +645,8 @@ class RedditBot:
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-    subreddit_name = "AfricaVoice"
     logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
-    subreddit = self.reddit.subreddit(subreddit_name)
+    subreddit = self.reddit.subreddit(Config.REDDIT_SUBREDDIT)
 
     while True:
         try:
