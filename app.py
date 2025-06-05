@@ -301,7 +301,7 @@ class SumySummarizer:
             summary = self._format_summary(filtered_sentences)
 
             if summary and len(summary.split()) >= 15:
-                return f"**Ã°Å¸â€œâ€ž Article Summary:**\n\n{summary}\n\n*Ã°Å¸Â¤â€“ This summary was generated automatically by a bot.*"
+                return summary
             else:
                 logger.warning("Generated summary too short after processing")
                 return None
@@ -564,7 +564,32 @@ class RedditBot:
     def _post_comment(self, submission, summary: str):
         """Post comment with summary."""
         try:
-            submission.reply(summary)
+            # Fetch related Africa news links (replace with your actual implementation)
+            related_news = self._fetch_related_africa_news(submission.title)
+
+            # Construct the comment with summary and related news
+            comment_text = f"""
+ðŸ“° Article Summary:
+
+> {summary}
+
+---
+
+ðŸŒ Related Africa News:
+"""
+            for i, news in enumerate(related_news):
+                comment_text += f"{chr(ord('a') + i)}) {news['title']} - {news['link']}\n"
+
+            comment_text += """
+
+---
+
+^This ^comment ^was ^automatically ^generated ^to ^inform ^and ^engage ^the ^community. ^Feedback ^is ^welcome!
+
+---
+"""
+
+            submission.reply(comment_text)
             logger.info(f"Comment posted successfully on submission {submission.id}")
 
             self.history.mark_commented(submission.id)
@@ -580,6 +605,27 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
+
+    def _fetch_related_africa_news(self, query: str):
+        """
+        Fetch related African news using a news API or web scraping.
+        Replace this with your actual implementation.
+        """
+        # Example using Google News API (replace with a better API or scraping)
+        base_url = "https://news.google.com/rss/search?q={}&hl=en-ZA&gl=ZA&ceid=ZA:en".format(query + " Africa")
+        try:
+            response = requests.get(base_url, timeout=10)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'xml')
+            news_items = []
+            for item in soup.find_all('item')[:3]:  # Limit to 3 news items
+                title = item.title.text
+                link = item.link.text
+                news_items.append({"title": title, "link": link})
+            return news_items
+        except Exception as e:
+            logger.error(f"Error fetching related news: {e}")
+            return []
 
 if __name__ == "__main__":
     bot = RedditBot()
