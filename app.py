@@ -62,7 +62,7 @@ class Config:
     REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
-    subreddit_name = "AfricaVoice"
+    REDDIT_SUBREDDIT = "AfricaVoice"
     
     # Rate limiting - respect Reddit's API limits
     COMMENT_DELAY = 720  # 12 minutes between comments (conservative)
@@ -633,6 +633,8 @@ class RedditBot:
                 client_secret=Config.REDDIT_CLIENT_SECRET,
                 refresh_token=Config.REDDIT_REFRESH_TOKEN,
                 user_agent=Config.REDDIT_USER_AGENT
+
+subreddit_name = Config.REDDIT_SUBREDDIT
             )
             
             # Verify authentication
