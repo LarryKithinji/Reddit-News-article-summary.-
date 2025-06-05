@@ -17,7 +17,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from readability import Document
+from readability.readability import Document
 import newspaper
 import cloudscraper
 
@@ -33,11 +33,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Config:
-    REDDIT_CLIENT_ID = "f7W8IqjORfzKsNqHVVSlJg"
-    REDDIT_CLIENT_SECRET = "-5Cw-MH-7r4GICQGishtgKhYuW9ssg"
-    REDDIT_USER_AGENT = "CommentBot"
-    REDDIT_USERNAME = "Old-Star54"
-    REDDIT_PASSWORD = "KePCCgt2minU1s1"
+    # Reddit OAuth credentials (use refresh token for persistent authentication)
+    REDDIT_CLIENT_ID = "yTCQyCL5ORAtnfbarxOllA"
+    REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
+    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
+    REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
+    SUBREDDIT_NAME = "AfricaVoice"
     COMMENT_DELAY = 720  # 12 minutes between comments
     SUBMISSION_DELAY = 300  # 5 minutes between submission checks
     LANGUAGE = "english"
@@ -289,7 +290,7 @@ class SumySummarizer:
             summary = self._format_summary(filtered_sentences)
 
             if summary and len(summary.split()) >= 15:
-                return f"**ðŸ“„ Article Summary:**\n\n{summary}\n\n*ðŸ¤– This summary was generated automatically by a bot.*"
+                return f"**Ã°Å¸â€œâ€ž Article Summary:**\n\n{summary}\n\n*Ã°Å¸Â¤â€“ This summary was generated automatically by a bot.*"
             else:
                 logger.warning("Generated summary too short after processing")
                 return None
@@ -450,8 +451,7 @@ class RedditBot:
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
             user_agent=Config.REDDIT_USER_AGENT,
-            username=Config.REDDIT_USERNAME,
-            password=Config.REDDIT_PASSWORD,
+            refresh_token=Config.REDDIT_REFRESH_TOKEN,
         )
 
         try:
@@ -465,8 +465,11 @@ class RedditBot:
             logger.error(f"Authentication failed: {e}")
             raise
 
-    def run(self, subreddit_name: str = "AfricaVoice"):
+    def run(self, subreddit_name: str = None):
         """Main bot loop."""
+        if subreddit_name is None:
+            subreddit_name = Config.SUBREDDIT_NAME
+            
         logger.info("Starting bot")
         self.notifier.send_notification(
             "Bot Active", 
