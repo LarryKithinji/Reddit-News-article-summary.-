@@ -645,7 +645,8 @@ class RedditBot:
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-    logger.info(f"Starting bot for subreddit: {subreddit_name}")
+    message = f"Starting bot for subreddit: {subreddit_name}"
+logger.info(message)
     logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
     
     subreddit = self.reddit.subreddit(subreddit_name)
