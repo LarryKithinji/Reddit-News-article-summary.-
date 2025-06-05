@@ -653,7 +653,7 @@ class RedditBot:
                 processed_count = 0
                 for submission in subreddit.new(limit=10):
                     if self.comment_tracker.has_commented(submission.id):
-                    continue
+                      continue
 
                 # Skip if too old (older than one hour)
                 if time.time() - submission.created_utc > 3600:
