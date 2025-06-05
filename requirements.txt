@@ -18,3 +18,4 @@ lxml
 readability-lxml
 cloudscraper
 selenium
+feedparser
