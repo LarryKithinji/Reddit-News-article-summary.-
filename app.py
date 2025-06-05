@@ -235,25 +235,164 @@ class SumySummarizer:
     def __init__(self):
         self.language = Config.LANGUAGE
         self.sentence_count = Config.SENTENCES_COUNT
+        
+        # Patterns to filter out promotional/irrelevant content
+        self.filter_patterns = [
+            r'subscribe\s+to\s+our\s+newsletter',
+            r'click\s+here\s+to\s+learn\s+more',
+            r'advertisement',
+            r'sponsored\s+content',
+            r'follow\s+us\s+on\s+social\s+media',
+            r'share\s+this\s+article',
+            r'related\s+articles?',
+            r'more\s+from\s+this\s+author',
+            r'get\s+our\s+free\s+newsletter',
+            r'sign\s+up\s+for\s+updates',
+            r'download\s+our\s+app',
+            r'join\s+our\s+community',
+            r'cookie\s+policy',
+            r'privacy\s+policy',
+            r'terms\s+of\s+service'
+        ]
+        
+        # Common promotional/navigation words to avoid in summaries
+        self.promotional_words = {
+            'subscribe', 'newsletter', 'advertisement', 'sponsored', 'promotion',
+            'follow', 'like', 'share', 'tweet', 'facebook', 'twitter', 'instagram',
+            'download', 'app', 'mobile', 'website', 'homepage', 'sitemap',
+            'cookies', 'privacy', 'terms', 'disclaimer', 'copyright'
+        }
 
     def generate_summary(self, content: str) -> Optional[str]:
-        """Generate summary using Sumy."""
+        """Generate enhanced summary with content filtering and formatting."""
         try:
-            parser = PlaintextParser.from_string(content, Tokenizer(self.language))
+            # Clean and filter content first
+            cleaned_content = self._clean_content(content)
+            
+            if not cleaned_content or len(cleaned_content.split()) < 30:
+                logger.warning("Content too short after cleaning")
+                return None
+            
+            parser = PlaintextParser.from_string(cleaned_content, Tokenizer(self.language))
             summarizer = LsaSummarizer(Stemmer(self.language))
             summarizer.stop_words = get_stop_words(self.language)
 
             sentences = summarizer(parser.document, self.sentence_count)
-            summary = ' '.join(str(sentence) for sentence in sentences)
+            
+            # Filter and format sentences
+            filtered_sentences = self._filter_sentences(sentences)
+            
+            if not filtered_sentences:
+                logger.warning("No relevant sentences found after filtering")
+                return None
+                
+            summary = self._format_summary(filtered_sentences)
 
-            if summary and len(summary.split()) >= 10:
-                return f"**Summary:** {summary}\n\n*I am a bot. This summary was generated automatically.*"
+            if summary and len(summary.split()) >= 15:
+                return f"**ðŸ“„ Article Summary:**\n\n{summary}\n\n*ðŸ¤– This summary was generated automatically by a bot.*"
             else:
-                logger.warning("Generated summary too short or empty")
+                logger.warning("Generated summary too short after processing")
                 return None
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
             return None
+    
+    def _clean_content(self, content: str) -> str:
+        """Remove promotional and irrelevant content."""
+        import re
+        
+        # Split into sentences
+        sentences = re.split(r'[.!?]+', content)
+        clean_sentences = []
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Skip very short sentences (likely fragments)
+            if len(sentence.split()) < 5:
+                continue
+                
+            # Skip sentences with promotional patterns
+            if self._contains_promotional_content(sentence.lower()):
+                continue
+                
+            # Skip sentences that are mostly promotional words
+            words = sentence.lower().split()
+            promo_word_count = sum(1 for word in words if any(promo in word for promo in self.promotional_words))
+            if len(words) > 0 and (promo_word_count / len(words)) > 0.3:
+                continue
+                
+            clean_sentences.append(sentence)
+        
+        return '. '.join(clean_sentences)
+    
+    def _contains_promotional_content(self, text: str) -> bool:
+        """Check if text contains promotional patterns."""
+        import re
+        
+        for pattern in self.filter_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return True
+        return False
+    
+    def _filter_sentences(self, sentences) -> list:
+        """Filter out low-quality sentences."""
+        filtered = []
+        
+        for sentence in sentences:
+            sentence_str = str(sentence).strip()
+            
+            # Skip very short sentences
+            if len(sentence_str.split()) < 6:
+                continue
+                
+            # Skip sentences with promotional content
+            if self._contains_promotional_content(sentence_str.lower()):
+                continue
+                
+            # Skip sentences that are mostly numbers or special characters
+            words = sentence_str.split()
+            alpha_words = [word for word in words if word.isalpha()]
+            if len(alpha_words) < len(words) * 0.6:  # At least 60% should be alphabetic words
+                continue
+                
+            filtered.append(sentence_str)
+        
+        return filtered
+    
+    def _format_summary(self, sentences: list) -> str:
+        """Format sentences into a well-structured summary."""
+        if not sentences:
+            return ""
+            
+        # Ensure proper punctuation and capitalization
+        formatted_sentences = []
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            
+            # Ensure sentence starts with capital letter
+            if sentence and sentence[0].islower():
+                sentence = sentence[0].upper() + sentence[1:]
+            
+            # Ensure sentence ends with proper punctuation
+            if sentence and sentence[-1] not in '.!?':
+                sentence += '.'
+            
+            formatted_sentences.append(sentence)
+        
+        # Join sentences with proper spacing
+        summary = ' '.join(formatted_sentences)
+        
+        # Clean up any double spaces or punctuation issues
+        import re
+        summary = re.sub(r'\s+', ' ', summary)  # Multiple spaces to single
+        summary = re.sub(r'\.+', '.', summary)  # Multiple periods to single
+        summary = re.sub(r'\s+([.!?])', r'\1', summary)  # Remove space before punctuation
+        
+        return summary.strip()
 
 class CommentHistoryManager:
     def __init__(self, filename: str):
