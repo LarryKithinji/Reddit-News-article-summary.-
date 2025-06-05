@@ -645,39 +645,41 @@ class RedditBot:
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-    logger.info(f"Starting bot")
-    logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
-    
-    subreddit = self.reddit.subreddit(subreddit_name)
-    consecutive_errors = 0
-    max_consecutive_errors = 5
+        logger.info(f"Starting bot")
+        logger.info(message)
+        logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
+        
+        subreddit = self.reddit.subreddit(subreddit_name)
+        consecutive_errors = 0
+        max_consecutive_errors = 5
 
-    while True:
-        try:
-            self._respect_rate_limits()  # Rate limiter
+        while True:
+            try:
+                self._respect_rate_limits()  # Rate limiter
 
-            for submission in subreddit.new(limit=10):
-                if submission.created_utc > self.last_submission_time:
-                    self._process_submission(submission)
-                    self.last_submission_time = submission.created_utc
+                for submission in subreddit.new(limit=10):
+                    if submission.created_utc > self.last_submission_time:
+                        self._process_submission(submission)
+                        self.last_submission_time = submission.created_utc
 
-                    logger.info(f"Waiting {Config.SUBMISSION_DELAY} seconds before next submission check")
-                    time.sleep(Config.SUBMISSION_DELAY)
+                        logger.info(f"Waiting {Config.SUBMISSION_DELAY} seconds before next submission check")
+                        time.sleep(Config.SUBMISSION_DELAY)
 
-            consecutive_errors = 0  # Reset error count after successful loop
+                consecutive_errors = 0  # Reset error count after successful loop
 
-        except Exception as e:
-            consecutive_errors += 1
-            logger.error(f"Error in main loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
+            except Exception as e:
+                consecutive_errors += 1
+                logger.error(f"Error in main loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
 
-            if consecutive_errors >= max_consecutive_errors:
-                logger.critical("Too many consecutive errors. Stopping bot.")
-                break
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.critical("Too many consecutive errors. Stopping bot.")
+                    break
 
-            # Exponential backoff (max 5 minutes)
-            sleep_time = min(300, 60 * (2 ** consecutive_errors))
-            logger.info(f"Sleeping for {sleep_time} seconds before retry")
-            time.sleep(sleep_time)
+                # Exponential backoff (max 5 minutes)
+                sleep_time = min(300, 60 * (2 ** consecutive_errors))
+                logger.info(f"Sleeping for {sleep_time} seconds before retry")
+                time.sleep(sleep_time)
+
 
 
     def process_submission(self, submission) -> bool:
