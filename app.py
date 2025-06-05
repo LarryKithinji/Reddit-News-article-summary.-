@@ -62,6 +62,7 @@ class Config:
     REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
+    REDDIT_SUBREDDIT = "AfricaVoice"
     
     # Rate limiting - respect Reddit's API limits
     COMMENT_DELAY = 720  # 12 minutes between comments (conservative)
