@@ -814,13 +814,3 @@ if __name__ == "__main__":
         logger.error(f"Bot crashed: {e}", exc_info=True)
         logger.info(f"Evaluating: {submission.title} ({submission.url})")
 
-if not hasattr(submission, 'url') or not submission.url:
-        logger.info(f"Rejected: No URL")
-elif 'reddit.com' in submission.url:
-        logger.info(f"Rejected: Reddit link")
-elif self.comment_tracker.has_commented(submission.id):
-        logger.info(f"Rejected: Already commented")
-elif time.time() - submission.created_utc > 3600:
-        logger.info(f"Rejected: Too old")
-else:
-        logger.info(f"Accepted: Ready to process")
