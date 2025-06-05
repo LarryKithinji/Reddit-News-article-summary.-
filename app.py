@@ -7,7 +7,6 @@ import os
 from typing import Optional, Dict, Set
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
-from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer
 from sumy.nlp.stemmers import Stemmer
 from sumy.utils import get_stop_words
@@ -42,7 +41,7 @@ class Config:
     SUBMISSION_DELAY = 300  # 5 minutes between submission checks
     LANGUAGE = "english"
     SENTENCES_COUNT = 4
-    DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1316896298901528668/cFLNO2jF4g9kBUUz6bS_t0jB1GQKjgtFcEMuK0qoVOtKK5tOtEQ5rnQlnllq5QAyOHFW"
+    DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1379376565699219486/S4rbFt_5m4aYtNdCJgRZeleIASCK_1WV8RonVpUvjdv9gwF7k_3viqkSV5oSDJw917lC"
     COMMENT_HISTORY_FILE = "comment_history.json"
     MIN_CONTENT_LENGTH = 50
 
@@ -149,8 +148,8 @@ class ContentExtractor:
             if driver:
                 try:
                     driver.quit()
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error closing driver: {e}")
         return None
 
     def _try_readability_extraction(self, url: str) -> Optional[Dict[str, any]]:
@@ -273,6 +272,8 @@ class SumySummarizer:
                 logger.warning("Content too short after cleaning")
                 return None
             
+            # Use Sumy's built-in tokenization without NLTK dependency  
+            from sumy.nlp.tokenizers import Tokenizer
             parser = PlaintextParser.from_string(cleaned_content, Tokenizer(self.language))
             summarizer = LsaSummarizer(Stemmer(self.language))
             summarizer.stop_words = get_stop_words(self.language)
