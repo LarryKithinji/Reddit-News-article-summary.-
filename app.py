@@ -1,4 +1,3 @@
-
 import praw
 import requests
 import logging
