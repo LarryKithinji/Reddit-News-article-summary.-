@@ -673,11 +673,11 @@ class RedditBot:
                         break
 
             # Sleep before next check
-               logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
+                logger.info(f"Processed {processed_count} submissions. Sleeping for {Config.REQUEST_DELAY} seconds...")
             time.sleep(Config.REQUEST_DELAY)
 
             except Exception as e:
-                logger.error(f"Error in main loop: {e}")
+                 logger.error(f"Error in main loop: {e}")
             time.sleep(300)  # 5 minute cooldown on error
 
     def process_submission(self, submission) -> bool:
