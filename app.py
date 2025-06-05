@@ -623,6 +623,7 @@ class RedditBot:
         self.reddit = None
         self.last_submission_time = 0
         self._initialize_reddit_connection()
+        self.comment_tracker = CommentTracker(self.reddit)
 
     def _initialize_reddit_connection(self):
         """Initialize Reddit connection with proper OAuth authentication."""
