@@ -58,7 +58,7 @@ class DiscordNotifier:
                 "color": 0x00ff00,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
             }
-            
+
             if url:
                 embed["url"] = url
 
@@ -86,7 +86,7 @@ class ContentExtractor:
             self._try_readability_extraction,
             self._try_basic_requests
         ]
-        
+
         for method in methods:
             try:
                 result = method(url)
@@ -95,7 +95,7 @@ class ContentExtractor:
             except Exception as e:
                 logger.debug(f"Method {method.__name__} failed: {e}")
                 continue
-        
+
         logger.warning(f"All extraction methods failed for URL: {url}")
         return None
 
@@ -106,10 +106,10 @@ class ContentExtractor:
             article = newspaper.Article(url)
             article.download()
             article.parse()
-            
+
             if article.text and len(article.text.split()) >= 50:
                 return self._process_extracted_content(article.text)
-                
+
         except Exception as e:
             logger.debug(f"Newspaper extraction failed: {e}")
         return None
@@ -126,22 +126,22 @@ class ContentExtractor:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
             chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            
+
             driver = webdriver.Chrome(options=chrome_options)
             driver.get(url)
-            
+
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-            
+
             time.sleep(3)
-            
+
             soup = BeautifulSoup(driver.page_source, 'html.parser')
             content = self._extract_with_advanced_selectors(soup)
-            
+
             if content and len(content.split()) >= 50:
                 return self._process_extracted_content(content)
-                
+
         except Exception as e:
             logger.debug(f"Selenium extraction failed: {e}")
         finally:
@@ -180,16 +180,16 @@ class ContentExtractor:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
             }
-            
+
             response = self.scraper.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-            
+
             soup = BeautifulSoup(response.text, 'html.parser')
             content = self._extract_with_advanced_selectors(soup)
-            
+
             if content and len(content.split()) >= 50:
                 return self._process_extracted_content(content)
-                
+
         except Exception as e:
             logger.debug(f"Basic requests extraction failed: {e}")
         return None
@@ -208,14 +208,14 @@ class ContentExtractor:
             '.story-body',
             'div[data-component="text-block"]'
         ]
-        
+
         for selector in selectors:
             elements = soup.select(selector)
             if elements:
                 content = ' '.join(elem.get_text(separator=' ').strip() for elem in elements)
                 if len(content.split()) >= 30:
                     return content
-        
+
         paragraphs = soup.find_all('p')
         return ' '.join(p.get_text(separator=' ').strip() for p in paragraphs)
 
@@ -223,7 +223,7 @@ class ContentExtractor:
         """Process and validate extracted content."""
         cleaned_content = ' '.join(content.split())
         word_count = len(cleaned_content.split())
-        
+
         return {
             'content': cleaned_content,
             'word_count': word_count,
@@ -234,7 +234,7 @@ class SumySummarizer:
     def __init__(self):
         self.language = Config.LANGUAGE
         self.sentence_count = Config.SENTENCES_COUNT
-        
+
         # Patterns to filter out promotional/irrelevant content
         self.filter_patterns = [
             r'subscribe\s+to\s+our\s+newsletter',
@@ -253,7 +253,7 @@ class SumySummarizer:
             r'privacy\s+policy',
             r'terms\s+of\s+service'
         ]
-        
+
         # Common promotional/navigation words to avoid in summaries
         self.promotional_words = {
             'subscribe', 'newsletter', 'advertisement', 'sponsored', 'promotion',
@@ -267,26 +267,37 @@ class SumySummarizer:
         try:
             # Clean and filter content first
             cleaned_content = self._clean_content(content)
-            
+
             if not cleaned_content or len(cleaned_content.split()) < 30:
                 logger.warning("Content too short after cleaning")
                 return None
-            
-            # Use Sumy's built-in tokenization without NLTK dependency  
-            from sumy.nlp.tokenizers import Tokenizer
-            parser = PlaintextParser.from_string(cleaned_content, Tokenizer(self.language))
-            summarizer = LsaSummarizer(Stemmer(self.language))
-            summarizer.stop_words = get_stop_words(self.language)
 
-            sentences = summarizer(parser.document, self.sentence_count)
-            
+            # Use simple sentence splitting instead of NLTK
+            import re
+            sentences = re.split(r'[.!?]+', cleaned_content)
+            sentences = [s.strip() for s in sentences if s.strip() and len(s.split()) > 5]
+
+            # Take the most informative sentences (first few and some from middle)
+            if len(sentences) >= self.sentence_count:
+                selected_sentences = []
+                # Take first 2 sentences
+                selected_sentences.extend(sentences[:2])
+                # Take some from middle
+                if len(sentences) > 4:
+                    mid_start = len(sentences) // 3
+                    mid_end = 2 * len(sentences) // 3
+                    selected_sentences.extend(sentences[mid_start:mid_end][:self.sentence_count-2])
+                selected_sentences = selected_sentences[:self.sentence_count]
+            else:
+                selected_sentences = sentences
+
             # Filter and format sentences
-            filtered_sentences = self._filter_sentences(sentences)
-            
+            filtered_sentences = self._filter_sentences(selected_sentences)
+
             if not filtered_sentences:
                 logger.warning("No relevant sentences found after filtering")
                 return None
-                
+
             summary = self._format_summary(filtered_sentences)
 
             if summary and len(summary.split()) >= 15:
@@ -297,102 +308,102 @@ class SumySummarizer:
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
             return None
-    
+
     def _clean_content(self, content: str) -> str:
         """Remove promotional and irrelevant content."""
         import re
-        
+
         # Split into sentences
         sentences = re.split(r'[.!?]+', content)
         clean_sentences = []
-        
+
         for sentence in sentences:
             sentence = sentence.strip()
             if not sentence:
                 continue
-                
+
             # Skip very short sentences (likely fragments)
             if len(sentence.split()) < 5:
                 continue
-                
+
             # Skip sentences with promotional patterns
             if self._contains_promotional_content(sentence.lower()):
                 continue
-                
+
             # Skip sentences that are mostly promotional words
             words = sentence.lower().split()
             promo_word_count = sum(1 for word in words if any(promo in word for promo in self.promotional_words))
             if len(words) > 0 and (promo_word_count / len(words)) > 0.3:
                 continue
-                
+
             clean_sentences.append(sentence)
-        
+
         return '. '.join(clean_sentences)
-    
+
     def _contains_promotional_content(self, text: str) -> bool:
         """Check if text contains promotional patterns."""
         import re
-        
+
         for pattern in self.filter_patterns:
             if re.search(pattern, text, re.IGNORECASE):
                 return True
         return False
-    
+
     def _filter_sentences(self, sentences) -> list:
         """Filter out low-quality sentences."""
         filtered = []
-        
+
         for sentence in sentences:
             sentence_str = str(sentence).strip()
-            
+
             # Skip very short sentences
             if len(sentence_str.split()) < 6:
                 continue
-                
+
             # Skip sentences with promotional content
             if self._contains_promotional_content(sentence_str.lower()):
                 continue
-                
+
             # Skip sentences that are mostly numbers or special characters
             words = sentence_str.split()
             alpha_words = [word for word in words if word.isalpha()]
             if len(alpha_words) < len(words) * 0.6:  # At least 60% should be alphabetic words
                 continue
-                
+
             filtered.append(sentence_str)
-        
+
         return filtered
-    
+
     def _format_summary(self, sentences: list) -> str:
         """Format sentences into a well-structured summary."""
         if not sentences:
             return ""
-            
+
         # Ensure proper punctuation and capitalization
         formatted_sentences = []
-        
+
         for sentence in sentences:
             sentence = sentence.strip()
-            
+
             # Ensure sentence starts with capital letter
             if sentence and sentence[0].islower():
                 sentence = sentence[0].upper() + sentence[1:]
-            
+
             # Ensure sentence ends with proper punctuation
             if sentence and sentence[-1] not in '.!?':
                 sentence += '.'
-            
+
             formatted_sentences.append(sentence)
-        
+
         # Join sentences with proper spacing
         summary = ' '.join(formatted_sentences)
-        
+
         # Clean up any double spaces or punctuation issues
         import re
         summary = re.sub(r'\s+', ' ', summary)  # Multiple spaces to single
         summary = re.sub(r'\.+', '.', summary)  # Multiple periods to single
         summary = re.sub(r'\s+([.!?])', r'\1', summary)  # Remove space before punctuation
-        
+
         return summary.strip()
 
 class CommentHistoryManager:
@@ -446,7 +457,7 @@ class RedditBot:
         self.summarizer = SumySummarizer()
         self.notifier = DiscordNotifier(Config.DISCORD_WEBHOOK_URL)
         self.history = CommentHistoryManager(Config.COMMENT_HISTORY_FILE)
-        
+
         self.reddit = praw.Reddit(
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
@@ -469,13 +480,13 @@ class RedditBot:
         """Main bot loop."""
         if subreddit_name is None:
             subreddit_name = Config.SUBREDDIT_NAME
-            
+
         logger.info("Starting bot")
         self.notifier.send_notification(
             "Bot Active", 
             f"Monitoring r/{subreddit_name} for new submissions"
         )
-        
+
         subreddit = self.reddit.subreddit(subreddit_name)
         logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
 
@@ -493,14 +504,14 @@ class RedditBot:
         try:
             for submission in subreddit.new(limit=10):
                 logger.info(f"Evaluating: {submission.title} ({submission.url})")
-                
+
                 if self.history.has_commented(submission.id):
                     logger.info(f"Already commented on submission {submission.id}, skipping")
                     continue
 
                 if self._should_process_submission(submission):
                     self._process_submission(submission)
-                    
+
         except Exception as e:
             logger.error(f"Error processing submissions: {e}")
 
@@ -509,23 +520,23 @@ class RedditBot:
         if submission.is_self:
             logger.info(f"Skipping text post: {submission.title}")
             return False
-            
+
         if submission.over_18:
             logger.info(f"Skipping NSFW content: {submission.title}")
             return False
-            
+
         excluded_domains = ['reddit.com', 'i.redd.it', 'v.redd.it']
         if any(domain in submission.url for domain in excluded_domains):
             logger.info(f"Skipping excluded domain: {submission.url}")
             return False
-            
+
         return True
 
     def _process_submission(self, submission):
         """Process a single submission."""
         try:
             logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
-            
+
             extracted = self.extractor.extract_content(submission.url)
             if not extracted:
                 logger.warning(f"Content extraction failed for {submission.url}")
@@ -533,9 +544,9 @@ class RedditBot:
 
             content = extracted['content']
             word_count = extracted['word_count']
-            
+
             logger.info(f"Extracted {word_count} words from content")
-            
+
             if word_count < Config.MIN_CONTENT_LENGTH:
                 logger.warning(f"Content too short ({word_count} words), skipping")
                 return
@@ -546,7 +557,7 @@ class RedditBot:
                 return
 
             self._post_comment(submission, summary)
-            
+
         except Exception as e:
             logger.error(f"Error processing submission {submission.id}: {e}", exc_info=True)
 
@@ -555,18 +566,18 @@ class RedditBot:
         try:
             submission.reply(summary)
             logger.info(f"Comment posted successfully on submission {submission.id}")
-            
+
             self.history.mark_commented(submission.id)
-            
+
             self.notifier.send_notification(
                 "Comment Posted",
                 f"Posted summary on: {submission.title}",
                 f"https://reddit.com{submission.permalink}"
             )
-            
+
             logger.info(f"Waiting {Config.COMMENT_DELAY} seconds before next comment")
             time.sleep(Config.COMMENT_DELAY)
-            
+
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
 
