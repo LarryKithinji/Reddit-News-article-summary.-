@@ -645,14 +645,14 @@ class RedditBot:
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-       logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
-       subreddit = self.reddit.subreddit(subreddit_name)
+        logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
+        subreddit = self.reddit.subreddit(subreddit_name)
 
-       while True:
-          try:
-              processed_count = 0
-              for submission in subreddit.new(limit=10):
-                if self.comment_tracker.has_commented(submission.id):
+        while True:
+            try:
+                processed_count = 0
+                for submission in subreddit.new(limit=10):
+                    if self.comment_tracker.has_commented(submission.id):
                     continue
 
                 # Skip if too old (older than one hour)
