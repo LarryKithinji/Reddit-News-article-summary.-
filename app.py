@@ -634,7 +634,7 @@ class RedditBot:
                 refresh_token=Config.REDDIT_REFRESH_TOKEN,
                 user_agent=Config.REDDIT_USER_AGENT
 
-subreddit_name = Config.REDDIT_SUBREDDIT
+subreddit_name=Config.REDDIT_SUBREDDIT
             )
             
             # Verify authentication
@@ -647,7 +647,7 @@ subreddit_name = Config.REDDIT_SUBREDDIT
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-    logger.info(f"Starting AfricaVoice bot for subreddit: {AfricaVoice}")
+    logger.info(f"Starting AfricaVoice bot for subreddit: {subreddit_name}")
     subreddit = self.reddit.subreddit(subreddit_name)
 
     while True:
