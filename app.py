@@ -628,7 +628,7 @@ class RedditBot:
         """Initialize Reddit connection with proper OAuth authentication."""
         try:
        # Use refresh token for persistent authentication
-        self.reddit = praw.Reddit(
+            self.reddit = praw.Reddit(
             client_id=Config.REDDIT_CLIENT_ID,
             client_secret=Config.REDDIT_CLIENT_SECRET,
             refresh_token=Config.REDDIT_REFRESH_TOKEN,
