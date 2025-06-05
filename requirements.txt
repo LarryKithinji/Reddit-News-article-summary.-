@@ -16,3 +16,5 @@ aiohttp
 newspaper3k
 lxml
 readability-lxml
+cloudscraper
+selenium
