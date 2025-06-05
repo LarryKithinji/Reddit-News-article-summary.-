@@ -641,7 +641,7 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Reddit authentication failed: {str(e)}")
-       raise
+            raise
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
