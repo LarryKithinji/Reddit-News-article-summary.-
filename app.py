@@ -636,7 +636,7 @@ class RedditBot:
         )
        
        # Verify authentication
-       me = self.reddit.user.me()
+            me = self.reddit.user.me()
         logger.info(f"Successfully authenticated as: {me.name}")
 
    except Exception as e:
