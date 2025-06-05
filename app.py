@@ -674,6 +674,7 @@ class RedditBot:
             logger.error(f"Error in main loop: {e}")
             time.sleep(300)
 
+
     def process_submission(self, submission) -> bool:
         """Process a single submission with improved content extraction and summarization."""
         try:
