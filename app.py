@@ -1,3 +1,4 @@
+
 import praw
 import requests
 import logging
@@ -14,6 +15,7 @@ import urllib.parse
 from urllib.parse import urlparse
 from readability import Document  # For readability-lxml fallback
 from typing import Set
+
 # Simple tokenizer to replace NLTK dependency
 class SimpleTokenizer:
     """A simple tokenizer that splits text into sentences without NLTK dependency."""
@@ -44,13 +46,74 @@ class SimpleTokenizer:
         words = re.findall(r'\b\w+\b', sentence.lower())
         return words
 
+# Discord webhook integration
+class DiscordWebhook:
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
+
+    def send_message(self, content: str, title: str = None):
+        """Send a message to Discord via webhook."""
+        try:
+            if title:
+                embed = {
+                    "embeds": [{
+                        "title": title,
+                        "description": content,
+                        "color": 0x00ff00,  # Green color
+                        "timestamp": time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
+                    }]
+                }
+            else:
+                embed = {"content": content}
+
+            response = requests.post(self.webhook_url, json=embed, timeout=10)
+            response.raise_for_status()
+            logger.info("Discord notification sent successfully")
+        except Exception as e:
+            logger.error(f"Failed to send Discord notification: {e}")
+
+    def send_error(self, error_msg: str, context: str = ""):
+        """Send error notification to Discord."""
+        content = f"ðŸš¨ **Bot Error** ðŸš¨\n\n**Context:** {context}\n**Error:** {error_msg}"
+        self.send_message(content, "Reddit Bot Error")
+
+    def send_success(self, message: str):
+        """Send success notification to Discord."""
+        content = f"âœ… {message}"
+        self.send_message(content, "Reddit Bot Update")
+
+    def send_crash(self, error_msg: str):
+        """Send crash notification to Discord."""
+        content = f"ðŸ’¥ **Bot Crashed** ðŸ’¥\n\n**Error:** {error_msg}\n\nBot will attempt to restart..."
+        self.send_message(content, "Reddit Bot Crash")
+
+# Logging setup with Discord integration
+class DiscordLogHandler(logging.Handler):
+    def __init__(self, discord_webhook: DiscordWebhook):
+        super().__init__()
+        self.discord_webhook = discord_webhook
+        self.last_notification_time = 0
+        self.notification_cooldown = 300  # 5 minutes cooldown between error notifications
+
+    def emit(self, record):
+        if record.levelno >= logging.ERROR:
+            current_time = time.time()
+            if current_time - self.last_notification_time > self.notification_cooldown:
+                error_msg = self.format(record)
+                self.discord_webhook.send_error(error_msg, record.name)
+                self.last_notification_time = current_time
+
+# Initialize Discord webhook
+discord_webhook = DiscordWebhook("https://discord.com/api/webhooks/1379376565699219486/S4rbFt_5m4aYtNdCJgRZeleIASCK_1WV8RonVpUvjdv9gwF7k_3viqkSV5oSDJw917lC")
+
 # Logging setup
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
     handlers=[
         logging.FileHandler("reddit_bot.log", mode="a", encoding="utf-8"),
-        logging.StreamHandler()
+        logging.StreamHandler(),
+        DiscordLogHandler(discord_webhook)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -63,7 +126,7 @@ class Config:
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
     SUBREDDIT_NAME = "AfricaVoice"
-    
+
     # Rate limiting - respect Reddit's API limits
     COMMENT_DELAY = 720  # 12 minutes between comments (conservative)
     SUBMISSION_DELAY = 300  # 5 minutes between submission checks
@@ -297,7 +360,7 @@ class ContentExtractor:
 class GoogleNewsExtractor:
     def __init__(self):
         self.base_url = "https://news.google.com/rss/search"
-        
+
         # Africa-related keywords for filtering
         self.africa_keywords = [
             # African countries
@@ -344,7 +407,7 @@ class GoogleNewsExtractor:
 
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-            
+
             soup = BeautifulSoup(response.content, 'xml')
             items = soup.find_all('item')
 
@@ -383,7 +446,7 @@ class GoogleNewsExtractor:
 
             logger.info(f"Found {len(news_links)} Africa-related news articles")
             return news_links
-            
+
         except Exception as e:
             logger.error(f"Error fetching Google News: {e}")
             return []
@@ -621,7 +684,12 @@ class RedditBot:
         self.news_extractor = GoogleNewsExtractor()
         self.reddit = None
         self.last_submission_time = 0
+        self.discord_webhook = discord_webhook
+        
+        # Initialize Reddit connection first
         self._initialize_reddit_connection()
+        
+        # Now initialize comment tracker with valid reddit instance
         self.comment_tracker = CommentTracker(self.reddit)
 
     def _initialize_reddit_connection(self):
@@ -629,26 +697,32 @@ class RedditBot:
         try:
             # Use refresh token for persistent authentication
             self.reddit = praw.Reddit(
-    client_id=Config.REDDIT_CLIENT_ID,
-    client_secret=Config.REDDIT_CLIENT_SECRET,
-    refresh_token=Config.REDDIT_REFRESH_TOKEN,
-    user_agent=Config.REDDIT_USER_AGENT
-)
+                client_id=Config.REDDIT_CLIENT_ID,
+                client_secret=Config.REDDIT_CLIENT_SECRET,
+                refresh_token=Config.REDDIT_REFRESH_TOKEN,
+                user_agent=Config.REDDIT_USER_AGENT
+            )
 
             # Verify authentication
             me = self.reddit.user.me()
             logger.info(f"Successfully authenticated as: {me.name}")
+            self.discord_webhook.send_success(f"Bot authenticated successfully as: {me.name}")
 
         except Exception as e:
             logger.error(f"Reddit authentication failed: {str(e)}")
+            self.discord_webhook.send_error(f"Reddit authentication failed: {str(e)}", "Authentication")
             raise
+
+    def _respect_rate_limits(self):
+        """Implement rate limiting to respect Reddit's API limits."""
+        time.sleep(Config.REQUEST_DELAY)
 
     def run(self, subreddit_name: str):
         """Main loop to monitor the subreddit and process new submissions."""
-        logger.info(f"Starting bot")
-        logger.info(message)
+        logger.info("Starting bot")
+        self.discord_webhook.send_success("ðŸš€ Reddit Bot started successfully!")
         logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
-        
+
         subreddit = self.reddit.subreddit(subreddit_name)
         consecutive_errors = 0
         max_consecutive_errors = 5
@@ -658,6 +732,7 @@ class RedditBot:
                 self._respect_rate_limits()  # Rate limiter
 
                 for submission in subreddit.new(limit=10):
+                    logger.info(f"Evaluating: {submission.title} ({submission.url})")
                     if submission.created_utc > self.last_submission_time:
                         self._process_submission(submission)
                         self.last_submission_time = submission.created_utc
@@ -670,9 +745,11 @@ class RedditBot:
             except Exception as e:
                 consecutive_errors += 1
                 logger.error(f"Error in main loop (attempt {consecutive_errors}/{max_consecutive_errors}): {e}")
+                self.discord_webhook.send_error(f"Main loop error (attempt {consecutive_errors}/{max_consecutive_errors}): {str(e)}", "Main Loop")
 
                 if consecutive_errors >= max_consecutive_errors:
                     logger.critical("Too many consecutive errors. Stopping bot.")
+                    self.discord_webhook.send_crash("Too many consecutive errors. Bot is stopping.")
                     break
 
                 # Exponential backoff (max 5 minutes)
@@ -680,9 +757,7 @@ class RedditBot:
                 logger.info(f"Sleeping for {sleep_time} seconds before retry")
                 time.sleep(sleep_time)
 
-
-
-    def process_submission(self, submission) -> bool:
+    def _process_submission(self, submission) -> bool:
         """Process a single submission with improved content extraction and summarization."""
         try:
             logger.info(f"Processing: '{submission.title}' (ID: {submission.id})")
@@ -692,7 +767,7 @@ class RedditBot:
                 logger.info(f"Already commented on submission {submission.id}, skipping")
                 return False
 
-            # Skip if no valid URLwhile True:
+            # Skip if no valid URL
             if not hasattr(submission, 'url') or not submission.url:
                 logger.info(f"Skipping non-link submission {submission.id}")
                 return False
@@ -723,12 +798,15 @@ class RedditBot:
             )
 
             # Only post if there's meaningful content
-               # ✅ PROPER INDENT HERE
             if summary or related_news:
                 if not self.comment_tracker.has_commented(submission.id):
                     self._post_comment(submission, summary, related_news)
                     self.comment_tracker.mark_as_commented(submission.id)
                     logger.info(f"Commented on submission {submission.id}")
+                    
+                    # Send Discord notification about successful comment
+                    self.discord_webhook.send_success(f"ðŸ’¬ Successfully commented on: '{submission.title[:50]}...'")
+                    
                     return True
                 else:
                     logger.info(f"Already commented on {submission.id} at posting stage, skipping")
@@ -739,9 +817,9 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Failed to process submission {submission.id}: {e}")
+            self.discord_webhook.send_error(f"Failed to process submission {submission.id}: {str(e)}", "Submission Processing")
             return False
 
- 
     def _post_comment(self, submission, summary: Optional[str], related_news: List[Dict[str, str]]):
         """Post a comment with improved formatting and rate limiting."""
         try:
@@ -758,6 +836,7 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
+            self.discord_webhook.send_error(f"Failed to post comment on submission {submission.id}: {str(e)}", "Comment Posting")
             raise  # Re-raise to handle in calling function
 
     def _format_comment(self, title: str, summary: Optional[str], related_news: List[Dict[str, str]]) -> str:
@@ -765,19 +844,19 @@ class RedditBot:
         comment_parts = []
 
         # Header
-        comment_parts.append(f'📰 **TLDR for:** "{title}"')
+        comment_parts.append(f'ðŸ“° **TLDR for:** "{title}"')
         comment_parts.append("")
         comment_parts.append("---")
         comment_parts.append("")
 
         # Summary section
         if summary:
-            comment_parts.append("💡 **Article Summary:**")
+            comment_parts.append("ðŸ’¡ **Article Summary:**")
             comment_parts.append("")
             comment_parts.append(f"> {summary}")
             comment_parts.append("")
         else:
-            comment_parts.append("💡 **Article Summary:**")
+            comment_parts.append("ðŸ’¡ **Article Summary:**")
             comment_parts.append("")
             comment_parts.append("> Unable to extract and summarize content from the original article.")
             comment_parts.append("")
@@ -786,20 +865,20 @@ class RedditBot:
         comment_parts.append("")
 
         # Related news section
-        comment_parts.append("📰 **Related Africa News:**")
+        comment_parts.append("ðŸ“° **Related Africa News:**")
         comment_parts.append("")
 
         if related_news:
             for news_item in related_news:
-                comment_parts.append(f"🔗 [{news_item['title']}]({news_item['url']})")
+                comment_parts.append(f"ðŸ”— [{news_item['title']}]({news_item['url']})")
                 comment_parts.append("")
         else:
-            comment_parts.append("🔗 No additional Africa-related news found at this time.")
+            comment_parts.append("ðŸ”— No additional Africa-related news found at this time.")
             comment_parts.append("")
 
         comment_parts.append("---")
         comment_parts.append("")
-        comment_parts.append("🤖 **^Powered ^by ^caffeine, ^code, ^and ^the ^spirit ^of ^Africa. ^This ^was ^your ^TL;DR ^from ^r/AfricaVoice.**")
+        comment_parts.append("ðŸ¤– **^Powered ^by ^caffeine, ^code, ^and ^the ^spirit ^of ^Africa. ^This ^was ^your ^TL;DR ^from ^r/AfricaVoice.**")
 
         return '\n'.join(comment_parts)
 
@@ -810,7 +889,7 @@ if __name__ == "__main__":
         bot.run("AfricaVoice")
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
+        discord_webhook.send_success("ðŸ›‘ Bot stopped by user")
     except Exception as e:
         logger.error(f"Bot crashed: {e}", exc_info=True)
-        logger.info(f"Evaluating: {submission.title} ({submission.url})")
-
+        discord_webhook.send_crash(f"Bot crashed with error: {str(e)}")
