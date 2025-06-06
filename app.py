@@ -581,26 +581,26 @@ class RedditBot:
         """Post comment with summary."""
         try:
             # Fetch related Africa news links
-            related_news = self._fetch_related_africa_news(submission.title)
+            related_news = self._fetch_related_africa_news(submission.title, submission.url)
 
             # Construct the comment with the new format
             comment_text = f"""---
 
-💡 Summary:
+ðŸ’¡ Summary:
 
 > {summary}
 
 ---
 
-🤝 Related News:
+ðŸ¤ Related News:
 
 """
             for news in related_news:
-                comment_text += f"🔗 ”— [{news['title']}]({news['link']})\n\n"
+                comment_text += f"ðŸ”— [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
-🛠️ This is response was automated!"""
+ðŸ› ï¸ This is response was automated!"""
 
             submission.reply(comment_text)
             logger.info(f"Comment posted successfully on submission {submission.id}")
@@ -619,26 +619,226 @@ class RedditBot:
         except Exception as e:
             logger.error(f"Failed to post comment on submission {submission.id}: {e}")
 
-    def _fetch_related_africa_news(self, query: str):
+    def _fetch_related_africa_news(self, query: str, original_url: str = None):
         """
-        Fetch related African news using a news API or web scraping.
-        Replace this with your actual implementation.
+        Fetch genuinely related African news with relevance filtering and duplicate prevention.
         """
-        # Example using Google News API (replace with a better API or scraping)
-        base_url = "https://news.google.com/rss/search?q={}&hl=en-ZA&gl=ZA&ceid=ZA:en".format(query + " Africa")
         try:
-            response = requests.get(base_url, timeout=10)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, 'xml')
-            news_items = []
-            for item in soup.find_all('item')[:3]:  # Limit to 3 news items
-                title = item.title.text
-                link = item.link.text
-                news_items.append({"title": title, "link": link})
-            return news_items
+            # Extract key terms from the query for better search relevance
+            key_terms = self._extract_key_terms(query)
+            
+            # Create multiple search queries to increase relevance
+            search_queries = [
+                f"{key_terms} Africa news",
+                f"{key_terms} African",
+                f"Africa {key_terms}"
+            ]
+            
+            all_news_items = []
+            
+            for search_query in search_queries:
+                base_url = f"https://news.google.com/rss/search?q={requests.utils.quote(search_query)}&hl=en-ZA&gl=ZA&ceid=ZA:en"
+                
+                try:
+                    response = requests.get(base_url, timeout=10)
+                    response.raise_for_status()
+                    soup = BeautifulSoup(response.content, 'xml')
+                    
+                    for item in soup.find_all('item')[:10]:  # Get more items for filtering
+                        title = item.title.text if item.title else ""
+                        link = item.link.text if item.link else ""
+                        pub_date = item.pubDate.text if item.pubDate else ""
+                        
+                        if title and link:
+                            all_news_items.append({
+                                "title": title,
+                                "link": link,
+                                "pub_date": pub_date,
+                                "search_query": search_query
+                            })
+                            
+                except Exception as e:
+                    logger.debug(f"Error with search query '{search_query}': {e}")
+                    continue
+            
+            # Filter for relevance and remove duplicates
+            filtered_news = self._filter_relevant_news(all_news_items, query, original_url)
+            
+            # Return top 3 most relevant items
+            return filtered_news[:3]
+            
         except Exception as e:
             logger.error(f"Error fetching related news: {e}")
             return []
+
+    def _extract_key_terms(self, query: str) -> str:
+        """Extract key terms from the query for better search relevance."""
+        import re
+        
+        # Remove common stop words and non-essential terms
+        stop_words = {
+            'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+            'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after',
+            'above', 'below', 'between', 'among', 'is', 'are', 'was', 'were', 'be', 'been',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should',
+            'may', 'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you',
+            'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them'
+        }
+        
+        # Extract words and filter
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', query.lower())
+        key_words = [word for word in words if word not in stop_words]
+        
+        # Prioritize important terms (capitals in original, longer words)
+        original_words = re.findall(r'\b[A-Z][a-zA-Z]{2,}\b', query)
+        if original_words:
+            key_words = list(set(key_words + [word.lower() for word in original_words]))
+        
+        return ' '.join(key_words[:5])  # Limit to 5 key terms
+
+    def _filter_relevant_news(self, news_items: list, original_query: str, original_url: str = None) -> list:
+        """Filter news items for relevance and remove duplicates."""
+        if not news_items:
+            return []
+        
+        # Extract key terms from original query
+        query_terms = set(self._extract_key_terms(original_query).lower().split())
+        
+        filtered_items = []
+        seen_titles = set()
+        seen_domains = set()
+        
+        for item in news_items:
+            title = item['title']
+            link = item['link']
+            
+            # Skip if this is the same article being summarized
+            if original_url and self._is_same_article(link, original_url):
+                continue
+            
+            # Skip duplicate titles (with some fuzzy matching)
+            title_normalized = self._normalize_title(title)
+            if title_normalized in seen_titles:
+                continue
+            
+            # Limit articles from the same domain
+            domain = self._extract_domain(link)
+            if domain in seen_domains and len([x for x in filtered_items if self._extract_domain(x['link']) == domain]) >= 1:
+                continue
+            
+            # Calculate relevance score
+            relevance_score = self._calculate_relevance_score(title, query_terms, original_query)
+            
+            # Only include if relevance score is above threshold
+            if relevance_score >= 0.3:  # 30% relevance threshold
+                item['relevance_score'] = relevance_score
+                filtered_items.append(item)
+                seen_titles.add(title_normalized)
+                seen_domains.add(domain)
+        
+        # Sort by relevance score (highest first)
+        filtered_items.sort(key=lambda x: x['relevance_score'], reverse=True)
+        
+        return filtered_items
+
+    def _is_same_article(self, url1: str, url2: str) -> bool:
+        """Check if two URLs point to the same article."""
+        import re
+        from urllib.parse import urlparse, parse_qs
+        
+        try:
+            # Parse URLs
+            parsed1 = urlparse(url1)
+            parsed2 = urlparse(url2)
+            
+            # Same domain and path
+            if parsed1.netloc == parsed2.netloc and parsed1.path == parsed2.path:
+                return True
+            
+            # Check for Google News redirect URLs
+            if 'news.google.com' in parsed1.netloc and 'url' in parse_qs(parsed1.query):
+                actual_url1 = parse_qs(parsed1.query)['url'][0]
+                return self._is_same_article(actual_url1, url2)
+            
+            if 'news.google.com' in parsed2.netloc and 'url' in parse_qs(parsed2.query):
+                actual_url2 = parse_qs(parsed2.query)['url'][0]
+                return self._is_same_article(url1, actual_url2)
+            
+            # Extract article identifiers (common patterns)
+            def extract_article_id(url):
+                # Common patterns for article IDs
+                patterns = [
+                    r'/(\d{4}/\d{2}/\d{2})/([^/]+)',  # Date-based URLs
+                    r'/article/([^/]+)',               # Article slug
+                    r'/news/([^/]+)',                  # News slug
+                    r'/(\d+)/?$',                      # Numeric ID at end
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, url)
+                    if match:
+                        return match.groups()
+                return None
+            
+            id1 = extract_article_id(url1)
+            id2 = extract_article_id(url2)
+            
+            if id1 and id2 and id1 == id2:
+                return True
+            
+            return False
+            
+        except Exception:
+            return False
+
+    def _normalize_title(self, title: str) -> str:
+        """Normalize title for duplicate detection."""
+        import re
+        
+        # Remove common prefixes/suffixes
+        title = re.sub(r'^(Breaking:|BREAKING:|Update:|UPDATE:)\s*', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'\s*-\s*(Reuters|AP|BBC|CNN|News24).*$', '', title, flags=re.IGNORECASE)
+        
+        # Convert to lowercase and remove extra whitespace
+        title = ' '.join(title.lower().split())
+        
+        # Remove punctuation
+        title = re.sub(r'[^\w\s]', '', title)
+        
+        return title
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract domain from URL."""
+        from urllib.parse import urlparse
+        try:
+            return urlparse(url).netloc.lower()
+        except:
+            return ""
+
+    def _calculate_relevance_score(self, title: str, query_terms: set, original_query: str) -> float:
+        """Calculate relevance score between title and query terms."""
+        if not title or not query_terms:
+            return 0.0
+        
+        title_words = set(title.lower().split())
+        
+        # Count matching terms
+        matching_terms = query_terms.intersection(title_words)
+        term_match_score = len(matching_terms) / len(query_terms) if query_terms else 0
+        
+        # Bonus for Africa-related content
+        africa_terms = {'africa', 'african', 'continent', 'sahara', 'subsaharan', 'sub-saharan'}
+        africa_bonus = 0.2 if africa_terms.intersection(title_words) else 0
+        
+        # Penalty for generic news terms that might not be relevant
+        generic_terms = {'breaking', 'update', 'report', 'news', 'latest', 'today', 'yesterday'}
+        generic_penalty = -0.1 if len(generic_terms.intersection(title_words)) > 2 else 0
+        
+        # Bonus for exact phrase matches
+        phrase_bonus = 0.3 if any(term in title.lower() for term in original_query.lower().split() if len(term) > 3) else 0
+        
+        total_score = term_match_score + africa_bonus + generic_penalty + phrase_bonus
+        
+        return max(0.0, min(1.0, total_score))  # Clamp between 0 and 1
 
 if __name__ == "__main__":
     bot = RedditBot()
