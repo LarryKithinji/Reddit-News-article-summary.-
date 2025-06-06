@@ -4,6 +4,7 @@ import logging
 import time
 import json
 import os
+from datetime import datetime, timezone
 from typing import Optional, Dict, Set
 from bs4 import BeautifulSoup
 from sumy.parsers.plaintext import PlaintextParser
@@ -38,7 +39,9 @@ class Config:
     REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
     SUBREDDIT_NAME = "AfricaVoice"
     COMMENT_DELAY = 720  # 12 minutes between comments
-    SUBMISSION_DELAY = 300  # 5 minutes between submission checks
+    SUBMISSION_DELAY = 90  # 90 seconds between submission checks (reduced from 5 minutes)
+    MONITORING_PING_DELAY = 90  # 90 seconds for monitoring ping when no new posts
+    MAX_POST_AGE_MINUTES = 5  # Only process posts less than 5 minutes old
     LANGUAGE = "english"
     SENTENCES_COUNT = 4
     DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1379376565699219486/S4rbFt_5m4aYtNdCJgRZeleIASCK_1WV8RonVpUvjdv9gwF7k_3viqkSV5oSDJw917lC"
@@ -484,15 +487,26 @@ class RedditBot:
         logger.info("Starting bot")
         self.notifier.send_notification(
             "Bot Active", 
-            f"Monitoring r/{subreddit_name} for new submissions"
+            f"Monitoring r/{subreddit_name} for new submissions (max age: {Config.MAX_POST_AGE_MINUTES} minutes)"
         )
 
         subreddit = self.reddit.subreddit(subreddit_name)
         logger.info(f"Rate limits: {Config.COMMENT_DELAY}s between comments, {Config.SUBMISSION_DELAY}s between checks")
+        logger.info(f"Only processing posts less than {Config.MAX_POST_AGE_MINUTES} minutes old")
+
+        last_monitoring_ping = time.time()
 
         while True:
             try:
-                self._process_new_submissions(subreddit)
+                processed_any = self._process_new_submissions(subreddit)
+                
+                # Send monitoring ping if no new posts were processed and it's been a while
+                if not processed_any:
+                    current_time = time.time()
+                    if current_time - last_monitoring_ping >= Config.MONITORING_PING_DELAY:
+                        self._send_monitoring_ping(subreddit_name)
+                        last_monitoring_ping = current_time
+                
                 logger.info(f"Waiting {Config.SUBMISSION_DELAY} seconds before next submission check")
                 time.sleep(Config.SUBMISSION_DELAY)
             except Exception as e:
@@ -501,9 +515,16 @@ class RedditBot:
 
     def _process_new_submissions(self, subreddit):
         """Process new submissions from the subreddit."""
+        processed_any = False
         try:
-            for submission in subreddit.new(limit=10):
-                logger.info(f"Evaluating: {submission.title} ({submission.url})")
+            # Only check the 5 newest posts to reduce load
+            for submission in subreddit.new(limit=5):
+                # Check if post is too old (older than MAX_POST_AGE_MINUTES)
+                if not self._is_post_recent(submission):
+                    logger.info(f"Skipping old post (>{Config.MAX_POST_AGE_MINUTES}min): {submission.title}")
+                    continue
+
+                logger.info(f"Evaluating recent post: {submission.title} ({submission.url}) [Age: {self._get_post_age_minutes(submission):.1f}min]")
 
                 # Check if the bot has already commented on this submission
                 if self._has_bot_commented(submission):
@@ -516,9 +537,12 @@ class RedditBot:
 
                 if self._should_process_submission(submission):
                     self._process_submission(submission)
+                    processed_any = True
 
         except Exception as e:
             logger.error(f"Error processing submissions: {e}")
+        
+        return processed_any
     
     def _has_bot_commented(self, submission) -> bool:
         """Check if the bot has already commented on the submission."""
@@ -848,6 +872,43 @@ class RedditBot:
         total_score = term_match_score + africa_bonus + generic_penalty + phrase_bonus
         
         return max(0.0, min(1.0, total_score))  # Clamp between 0 and 1
+
+    def _is_post_recent(self, submission) -> bool:
+        """Check if post is recent enough to process."""
+        post_age_minutes = self._get_post_age_minutes(submission)
+        return post_age_minutes <= Config.MAX_POST_AGE_MINUTES
+
+    def _get_post_age_minutes(self, submission) -> float:
+        """Get the age of a post in minutes."""
+        try:
+            post_time = datetime.fromtimestamp(submission.created_utc, tz=timezone.utc)
+            current_time = datetime.now(timezone.utc)
+            age_seconds = (current_time - post_time).total_seconds()
+            return age_seconds / 60.0
+        except Exception as e:
+            logger.error(f"Error calculating post age: {e}")
+            return float('inf')  # Return large number to skip if error
+
+    def _send_monitoring_ping(self, subreddit_name: str):
+        """Send a lightweight monitoring ping to keep the bot active."""
+        try:
+            current_time = datetime.now(timezone.utc).strftime("%H:%M UTC")
+            logger.info(f"ðŸ“¡ Monitoring ping sent at {current_time} - No new posts to process")
+            
+            # Send lightweight Discord notification every few pings to avoid spam
+            if hasattr(self, '_ping_count'):
+                self._ping_count += 1
+            else:
+                self._ping_count = 1
+            
+            # Only send Discord notification every 10 pings (15 minutes)
+            if self._ping_count % 10 == 0:
+                self.notifier.send_notification(
+                    "Bot Monitoring", 
+                    f"Bot active and monitoring r/{subreddit_name} - No new posts in last 15 minutes"
+                )
+        except Exception as e:
+            logger.error(f"Error sending monitoring ping: {e}")
 
 if __name__ == "__main__":
     bot = RedditBot()
