@@ -592,7 +592,7 @@ class RedditBot:
 
 ---
 
-🤝 Related News:
+🤝 Related News:
 
 """
             for news in related_news:
