@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 class Config:
     # Reddit OAuth credentials (use refresh token for persistent authentication)
-    REDDIT_CLIENT_ID = "yTCQyCL5ORAtnfbarxOllA"
-    REDDIT_CLIENT_SECRET = "nMJw7DFkQlyBeTIC56DUsTvtVPi59g"
-    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
-    REDDIT_REFRESH_TOKEN = "177086754394813-K-OcOV-73ynFBmvLoJXRPy0kewplzw"
+    REDDIT_CLIENT_ID = "H_0R3y_suLY78pI-mbq-vg"
+    REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
+    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/The_ghost_of_spectre"
+    REDDIT_REFRESH_TOKEN = "143460106421528-zgtWnZmgXa1zwCNFUq1E-7Seh7epoQ"
     SUBREDDIT_NAME = "AfricaVoice"
     COMMENT_DELAY = 720  # 12 minutes between comments
     SUBMISSION_DELAY = 90  # 90 seconds between submission checks (reduced from 5 minutes)
