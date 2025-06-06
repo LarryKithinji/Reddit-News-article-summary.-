@@ -523,8 +523,17 @@ class RedditBot:
     def _has_bot_commented(self, submission) -> bool:
         """Check if the bot has already commented on the submission."""
         try:
-            for comment in submission.comments:
-                if comment.author and comment.author.name == self.reddit.user.me().name:
+            # Only check top-level comments and limit to first 20 to avoid hanging
+            submission.comments.replace_more(limit=0)  # Don't expand "more comments"
+            
+            bot_username = self.reddit.user.me().name
+            
+            # Check only the first 20 top-level comments
+            for i, comment in enumerate(submission.comments):
+                if i >= 20:  # Limit to prevent hanging
+                    break
+                    
+                if hasattr(comment, 'author') and comment.author and comment.author.name == bot_username:
                     return True
             return False
         except Exception as e:
@@ -586,21 +595,21 @@ class RedditBot:
             # Construct the comment with the new format
             comment_text = f"""---
 
-💡 Summary:
+ðŸ’¡ Summary:
 
 > {summary}
 
 ---
 
-🤝 Related News:
+ðŸ¤ Related News:
 
 """
             for news in related_news:
-                comment_text += f"🔗 ”— [{news['title']}]({news['link']})\n\n"
+                comment_text += f"ðŸ”— [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
-🛠️This is response was automated!"""
+ðŸ› ï¸ This is response was automated!"""
 
             submission.reply(comment_text)
             logger.info(f"Comment posted successfully on submission {submission.id}")
