@@ -15,7 +15,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from readability.readability import Document
+from readability import Document
 import newspaper
 import cloudscraper
 
@@ -505,6 +505,11 @@ class RedditBot:
             for submission in subreddit.new(limit=10):
                 logger.info(f"Evaluating: {submission.title} ({submission.url})")
 
+                # Check if the bot has already commented on this submission
+                if self._has_bot_commented(submission):
+                    logger.info(f"Bot already commented on submission {submission.id}, skipping")
+                    continue
+
                 if self.history.has_commented(submission.id):
                     logger.info(f"Already commented on submission {submission.id}, skipping")
                     continue
@@ -514,6 +519,17 @@ class RedditBot:
 
         except Exception as e:
             logger.error(f"Error processing submissions: {e}")
+    
+    def _has_bot_commented(self, submission) -> bool:
+        """Check if the bot has already commented on the submission."""
+        try:
+            for comment in submission.comments:
+                if comment.author and comment.author.name == self.reddit.user.me().name:
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"Error checking comments: {e}")
+            return False
 
     def _should_process_submission(self, submission) -> bool:
         """Determine if submission should be processed."""
@@ -564,30 +580,27 @@ class RedditBot:
     def _post_comment(self, submission, summary: str):
         """Post comment with summary."""
         try:
-            # Fetch related Africa news links (replace with your actual implementation)
+            # Fetch related Africa news links
             related_news = self._fetch_related_africa_news(submission.title)
 
-            # Construct the comment with summary and related news
-            comment_text = f"""
-ðŸ“° Article Summary:
+            # Construct the comment with the new format
+            comment_text = f"""---
+
+📰 Summary:
 
 > {summary}
 
 ---
 
-ðŸŒ Related Africa News:
+💡 Related News:
+
 """
-            for i, news in enumerate(related_news):
-                comment_text += f"{chr(ord('a') + i)}) {news['title']} - {news['link']}\n"
+            for news in related_news:
+                comment_text += f"ðŸ”— [{news['title']}]({news['link']})\n\n"
 
-            comment_text += """
+            comment_text += """---
 
----
-
-^This ^comment ^was ^automatically ^generated ^to ^inform ^and ^engage ^the ^community. ^Feedback ^is ^welcome!
-
----
-"""
+This is response was automated!"""
 
             submission.reply(comment_text)
             logger.info(f"Comment posted successfully on submission {submission.id}")
