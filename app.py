@@ -586,13 +586,13 @@ class RedditBot:
             # Construct the comment with the new format
             comment_text = f"""---
 
-ðŸ’¡ Summary:
+💡 Summary:
 
 > {summary}
 
 ---
 
-ðŸ¤ Related News:
+🤝 Related News:
 
 """
             for news in related_news:
@@ -600,7 +600,7 @@ class RedditBot:
 
             comment_text += """---
 
-ðŸ› ï¸ This is response was automated!"""
+🛠️ This is response was automated!"""
 
             submission.reply(comment_text)
             logger.info(f"Comment posted successfully on submission {submission.id}")
