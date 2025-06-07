@@ -805,21 +805,21 @@ class RedditBot:
             # Construct the comment with the new format
             comment_text = f"""---
 
-ðŸ’¡ Summary:
+💡 Summary:
 
 > {summary}
 
 ---
 
-ðŸ¤ Related News:
+🤝 Related News:
 
 """
             for news in related_news:
-                comment_text += f"ðŸ”— [{news['title']}]({news['link']})\n\n"
+                comment_text += f"🔗”— [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
-ðŸ› ï¸ This is response was automated!"""
+ This response was automated!"""
 
             submission.reply(comment_text)
             logger.info(
