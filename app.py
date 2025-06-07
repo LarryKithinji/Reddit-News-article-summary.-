@@ -811,7 +811,7 @@ class RedditBot:
 
 ---
 
-💡 Related News:
+🤝 Related News:
 
 """
             for news in related_news:
@@ -819,7 +819,7 @@ class RedditBot:
 
             comment_text += """---
 
-🛠️ This response was automated!"""
+🤖 This response was automated!"""
 
             submission.reply(comment_text)
             logger.info(
@@ -933,9 +933,6 @@ class RedditBot:
         query_terms = set(
             self._extract_key_terms(original_query).lower().split())
 
-        # Normalize the original query title for comparison
-        original_title_normalized = self._normalize_title(original_query)
-
         filtered_items = []
         seen_titles = set()
         seen_domains = set()
@@ -944,13 +941,13 @@ class RedditBot:
             title = item['title']
             link = item['link']
 
+            # Skip if this is the same article being summarized
+            if original_url and self._is_same_article(link, original_url):
+                continue
+
             # Skip duplicate titles (with some fuzzy matching)
             title_normalized = self._normalize_title(title)
             if title_normalized in seen_titles:
-                continue
-
-            # Skip if this is the same article being summarized (compare titles)
-            if self._is_same_title(title_normalized, original_title_normalized):
                 continue
 
             # Limit articles from the same domain
@@ -1049,27 +1046,6 @@ class RedditBot:
         title = re.sub(r'[^\w\s]', '', title)
 
         return title
-
-    def _is_same_title(self, title1: str, title2: str) -> bool:
-        """Check if two titles refer to the same article."""
-        if not title1 or not title2:
-            return False
-        
-        # Calculate similarity using word overlap
-        words1 = set(title1.split())
-        words2 = set(title2.split())
-        
-        if not words1 or not words2:
-            return False
-        
-        # Calculate Jaccard similarity (intersection over union)
-        intersection = len(words1.intersection(words2))
-        union = len(words1.union(words2))
-        
-        similarity = intersection / union if union > 0 else 0
-        
-        # Consider titles the same if they have 70% or more word overlap
-        return similarity >= 0.7
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL."""
