@@ -815,7 +815,7 @@ class RedditBot:
 
 """
             for news in related_news:
-                comment_text += 🔗 [{news['title']}]({news['link']})\n\n"
+                comment_text += f"🔗”— [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
