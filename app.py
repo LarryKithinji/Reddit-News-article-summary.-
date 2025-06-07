@@ -36,7 +36,7 @@ class Config:
     # Reddit OAuth credentials (use refresh token for persistent authentication)
     REDDIT_CLIENT_ID = "H_0R3y_suLY78pI-mbq-vg"
     REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
-    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/The_ghost_of_spectre"
+    REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
     REDDIT_REFRESH_TOKEN = "-zgtW143460106421528nZmgXa1zwCNFUq1E-7Seh7epoQ"
     SUBREDDIT_NAME = "AfricaVoice"
     COMMENT_DELAY = 720  # 12 minutes between comments
@@ -805,21 +805,21 @@ class RedditBot:
             # Construct the comment with the new format
             comment_text = f"""---
 
-💡 Summary:
+ðŸ’¡ Summary:
 
 > {summary}
 
 ---
 
-🤝 Related News:
+ðŸ¤ Related News:
 
 """
             for news in related_news:
-                comment_text += f"🔗”— [{news['title']}]({news['link']})\n\n"
+                comment_text += f"ðŸ”— [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
-This was response was automated!"""
+ðŸ› ï¸ This is response was automated!"""
 
             submission.reply(comment_text)
             logger.info(
