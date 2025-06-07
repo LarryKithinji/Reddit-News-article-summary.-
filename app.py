@@ -37,7 +37,7 @@ class Config:
     REDDIT_CLIENT_ID = "H_0R3y_suLY78pI-mbq-vg"
     REDDIT_CLIENT_SECRET = "gXZ2u71qSbx8P2ltK91wEZ4upgvK0w"
     REDDIT_USER_AGENT = "AfricaVoiceBot/1.0 by u/Old-Star54"
-    REDDIT_REFRESH_TOKEN = "-zgtW143460106421528nZmgXa1zwCNFUq1E-7Seh7epoQ"
+    REDDIT_REFRESH_TOKEN = "eyJhbGciOiJSUzI1NiIsImtpZCI6IlNIQTI1NjpzS3dsMnlsV0VtMjVmcXhwTU40cWY4MXE2OWFFdWFyMnpLMUdhVGxjdWNZIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c2VyIiwianRpIjoiOWRrcHlPRGcwZlo3QzQtcGl1SU9KdVZhMk9sdDBBIiwiZXhwIjoxNzQ5MzY4OTE4LjAwNTQwMiwiaWF0IjoxNzQ5MjgyNTE4LjAwNTQwMiwiY2lkIjoiSF8wUjN5X3N1TFk3OHBJLW1icS12ZyIsImxpZCI6InQyXzFldW9udmJ6dGsiLCJhaWQiOiJ0Ml8xZXVvbnZienRrIiwic2NwIjoiZUp4RWprRnV4VEFJUk9fQzJqZXF1aUEyemtlMUlRS2NLcmV2WFB1M3V4R2plYndQeUVhbGNEZ2s2RnBFZzFiS0ttRjhqRkRiWFVkdWYxM2xFeEw0T0R3YkgzUGpZU1BITUNvZVQ2TTV1aGZ0bTctWUNzY2NQejZPXzQ4LWpyN3VXcHFlSzF6cWI1M2FrQTBTb0lnT3lkUkoxZzd2cmFueG9sOUJJeXlRNERLLU1haVRPNTYwaWt0dF91QkNFaHdQSkdoOFUwZkJjMUl3WngyeUxjS3dWczdiZWtQZjhscm1jU1duVmlIQml6M1VKbk81ZnY0RUFBRF9fLXhYZGRzIiwibGNhIjoxNzMzOTg0NTA3MjE5LCJmbG8iOjh9.oJRK4w6h1tlFpeyG3bzyeSHUlZr-UU4AQYY4grXxeEAAhlP8F1R_iFgcDuFKnzsY9Njvt33IDRlkbxQ3f0PehSTtpvbtXkZ3pqScNTdxt4TKmiQ1lmxKnde1ksuI5rHlySYQrRWgWTY1C58QebCW4nQzcLevIjGq6WJYcNvzsYDIFTm3Ule0ninrYkC97dZX3e1aeR_IWKIAR4JaDJQ2TigaU9LyaM95dKeytwV2oqaI86RHpcvSnwnEW25ZDvUKjEVCXHILj-w_Kl0FbgDvu8dzjdoBcJR0XYcylRoJGS0aYqKs7yUiUs8TQf7vv27-jCD8a35pkLM1eonpESW2QA"
     SUBREDDIT_NAME = "AfricaVoice"
     COMMENT_DELAY = 720  # 12 minutes between comments
     SUBMISSION_DELAY = 90  # 90 seconds between submission checks (reduced from 5 minutes)
@@ -811,7 +811,7 @@ class RedditBot:
 
 ---
 
-🤝 Related News:
+🤝 Related News:
 
 """
             for news in related_news:
@@ -819,7 +819,7 @@ class RedditBot:
 
             comment_text += """---
 
- This response was automated!"""
+🛠️ This response was automated!"""
 
             submission.reply(comment_text)
             logger.info(
@@ -933,9 +933,6 @@ class RedditBot:
         query_terms = set(
             self._extract_key_terms(original_query).lower().split())
 
-        # Normalize the original query title for comparison
-        original_title_normalized = self._normalize_title(original_query)
-
         filtered_items = []
         seen_titles = set()
         seen_domains = set()
@@ -944,13 +941,13 @@ class RedditBot:
             title = item['title']
             link = item['link']
 
+            # Skip if this is the same article being summarized
+            if original_url and self._is_same_article(link, original_url):
+                continue
+
             # Skip duplicate titles (with some fuzzy matching)
             title_normalized = self._normalize_title(title)
             if title_normalized in seen_titles:
-                continue
-
-            # Skip if this is the same article being summarized (compare titles)
-            if self._is_same_title(title_normalized, original_title_normalized):
                 continue
 
             # Limit articles from the same domain
@@ -1049,27 +1046,6 @@ class RedditBot:
         title = re.sub(r'[^\w\s]', '', title)
 
         return title
-
-    def _is_same_title(self, title1: str, title2: str) -> bool:
-        """Check if two titles refer to the same article."""
-        if not title1 or not title2:
-            return False
-        
-        # Calculate similarity using word overlap
-        words1 = set(title1.split())
-        words2 = set(title2.split())
-        
-        if not words1 or not words2:
-            return False
-        
-        # Calculate Jaccard similarity (intersection over union)
-        intersection = len(words1.intersection(words2))
-        union = len(words1.union(words2))
-        
-        similarity = intersection / union if union > 0 else 0
-        
-        # Consider titles the same if they have 70% or more word overlap
-        return similarity >= 0.7
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL."""
