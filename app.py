@@ -825,8 +825,8 @@ class RedditBot:
             logger.info(
                 f"Comment posted successfully on submission {submission.id}")
 
-            # Schedule duplicate removal and sticky management
-            self._schedule_comment_management(submission, new_comment)
+            # Schedule duplicate removal
+            self._schedule_duplicate_cleanup(submission)
 
             self.history.mark_commented(submission.id)
 
@@ -842,154 +842,162 @@ class RedditBot:
             logger.error(
                 f"Failed to post comment on submission {submission.id}: {e}")
 
-    def _schedule_comment_management(self, submission, new_comment):
-        """Schedule duplicate removal and sticky management."""
+    def _schedule_duplicate_cleanup(self, submission):
+        """Schedule aggressive duplicate comment cleanup with frequent checks."""
         import threading
 
-        # Shorter delay for sticky management (30-60 seconds)
-        sticky_delay = 45
-        cleanup_delay = 300  # 5 minutes for cleanup
+        # More frequent cleanup rounds for aggressive duplicate detection
+        cleanup_rounds = [30, 60, 120, 300, 600, 1200]  # 30s, 1min, 2min, 5min, 10min, 20min
 
-        def manage_sticky():
+        def run_cleanup_round(delay, round_num):
             try:
-                time.sleep(sticky_delay)
-                self._manage_sticky_comments(submission)
-            except Exception as e:
-                logger.error(f"Error in sticky management: {e}")
-
-        def manage_cleanup():
-            try:
-                time.sleep(cleanup_delay)
+                time.sleep(delay)
+                logger.info(f"ðŸ§¹ Running aggressive duplicate cleanup round {round_num} for submission {submission.id}")
                 self._remove_duplicate_comments(submission)
             except Exception as e:
-                logger.error(f"Error in comment cleanup: {e}")
+                logger.error(f"Error in cleanup round {round_num}: {e}")
 
-        # Start both management tasks
-        sticky_thread = threading.Thread(target=manage_sticky, daemon=True)
-        cleanup_thread = threading.Thread(target=manage_cleanup, daemon=True)
+        # Schedule multiple cleanup rounds
+        for i, delay in enumerate(cleanup_rounds, 1):
+            cleanup_thread = threading.Thread(
+                target=run_cleanup_round, 
+                args=(delay, i), 
+                daemon=True
+            )
+            cleanup_thread.start()
 
-        sticky_thread.start()
-        cleanup_thread.start()
-
-        logger.info(
-            f"Scheduled sticky management for submission {submission.id} in {sticky_delay} seconds"
-        )
-        logger.info(
-            f"Scheduled cleanup for submission {submission.id} in {cleanup_delay} seconds"
-        )
+        logger.info(f"Scheduled {len(cleanup_rounds)} aggressive cleanup rounds for submission {submission.id}")
 
     def _remove_duplicate_comments(self, submission):
-        """Remove duplicate comments made by the bot on the same submission."""
+        """Enhanced duplicate comment removal with aggressive detection."""
         try:
-            logger.info(
-                f"Checking for duplicate comments on submission {submission.id}"
-            )
-
-            # Refresh submission to get latest comments
-            submission.comments.replace_more(limit=None)
+            logger.info(f"Checking for duplicate comments on submission {submission.id}")
 
             bot_username = self.reddit.user.me().name
+            max_attempts = 5
             bot_comments = []
-
-            ## Find all bot comments on this submission
-            for comment in submission.comments.list():
-                if (hasattr(comment, 'author') and comment.author
-                        and comment.author.name == bot_username):
-                    bot_comments.append(comment)
+            
+            # Multiple aggressive attempts to find all bot comments
+            for attempt in range(max_attempts):
+                try:
+                    # Force fresh data each time
+                    submission._fetched = False
+                    submission.comment_limit = None
+                    submission.comment_sort = "new"
+                    
+                    # Get all comments, including nested ones
+                    submission.comments.replace_more(limit=None)
+                    all_comments = submission.comments.list()
+                    
+                    current_bot_comments = []
+                    
+                    for comment in all_comments:
+                        try:
+                            # Very thorough bot comment detection
+                            if (hasattr(comment, 'author') and 
+                                comment.author is not None and 
+                                str(comment.author).lower() == bot_username.lower() and
+                                hasattr(comment, 'body') and
+                                ('âœ¦ Summary:' in comment.body or 'ðŸ¤– This response was automated!' in comment.body)):
+                                
+                                # Additional check to ensure it's not deleted
+                                try:
+                                    _ = comment.id  # This will fail if comment is deleted
+                                    _ = comment.created_utc  # This will fail if comment is inaccessible
+                                    current_bot_comments.append(comment)
+                                    logger.debug(f"Found bot comment {comment.id} created at {comment.created_utc}")
+                                except:
+                                    logger.debug(f"Skipping inaccessible comment")
+                                    continue
+                                    
+                        except Exception as e:
+                            logger.debug(f"Error checking comment: {e}")
+                            continue
+                    
+                    logger.info(f"Attempt {attempt + 1}: Found {len(current_bot_comments)} bot comments")
+                    
+                    # Keep the attempt that found the most comments
+                    if len(current_bot_comments) > len(bot_comments):
+                        bot_comments = current_bot_comments
+                    
+                    # If we found multiple comments, proceed with deletion
+                    if len(current_bot_comments) > 1:
+                        break
+                        
+                    # Wait between attempts
+                    if attempt < max_attempts - 1:
+                        time.sleep(3)
+                        
+                except Exception as e:
+                    logger.error(f"Attempt {attempt + 1} failed: {e}")
+                    time.sleep(2)
+                    continue
 
             if len(bot_comments) <= 1:
-                logger.info(
-                    f"No duplicate comments found on submission {submission.id}"
-                )
+                logger.info(f"No duplicates found on submission {submission.id} (found {len(bot_comments)} bot comments)")
                 return
 
-            logger.warning(
-                f"Found {len(bot_comments)} bot comments on submission {submission.id}, removing duplicates"
-            )
+            logger.warning(f"DUPLICATE DETECTED: Found {len(bot_comments)} bot comments on submission {submission.id}")
 
-            # Sort by creation time (oldest first)
-            bot_comments.sort(key=lambda c: c.created_utc)
+            # Sort by creation time (keep oldest, remove newer ones)
+            try:
+                bot_comments.sort(key=lambda c: c.created_utc)
+                comment_to_keep = bot_comments[0]
+                duplicates_to_remove = bot_comments[1:]
+                
+                logger.info(f"Keeping comment {comment_to_keep.id}, removing {len(duplicates_to_remove)} duplicates")
+                
+            except Exception as e:
+                logger.error(f"Error sorting comments: {e}")
+                return
 
-            # Keep the first (oldest) comment, delete the rest
-            comments_to_keep = bot_comments[0]
-            duplicates_to_remove = bot_comments[1:]
-
-            for duplicate in duplicates_to_remove:
+            # Aggressively remove duplicates
+            removed_count = 0
+            for i, duplicate in enumerate(duplicates_to_remove):
                 try:
-                    duplicate.delete()
-                    logger.info(f"Deleted duplicate comment {duplicate.id}")
+                    # Try multiple deletion attempts for each duplicate
+                    for deletion_attempt in range(3):
+                        try:
+                            # Refresh the comment to ensure it still exists
+                            duplicate.refresh()
+                            
+                            # Check if it's already deleted
+                            if hasattr(duplicate, 'body') and duplicate.body == '[deleted]':
+                                logger.info(f"Comment {duplicate.id} already deleted")
+                                removed_count += 1
+                                break
+                            
+                            # Attempt deletion
+                            duplicate.delete()
+                            logger.info(f"Successfully deleted duplicate comment {duplicate.id}")
+                            removed_count += 1
+                            break
+                            
+                        except Exception as delete_error:
+                            logger.warning(f"Deletion attempt {deletion_attempt + 1} failed for comment {duplicate.id}: {delete_error}")
+                            if deletion_attempt < 2:
+                                time.sleep(2)
+                            continue
+                    
+                    # Rate limiting between deletions
+                    time.sleep(1)
+                    
                 except Exception as e:
-                    logger.error(
-                        f"Failed to delete duplicate comment {duplicate.id}: {e}"
-                    )
+                    logger.error(f"Failed to process duplicate comment {getattr(duplicate, 'id', 'unknown')}: {e}")
 
-            if duplicates_to_remove:
+            if removed_count > 0:
+                logger.info(f"SUCCESS: Removed {removed_count} duplicate comments from submission {submission.id}")
                 self.notifier.send_notification(
                     "Duplicates Removed",
-                    f"Removed {len(duplicates_to_remove)} duplicate comments from: {submission.title}",
+                    f"Removed {removed_count} duplicate comments from: {submission.title}",
                     f"https://reddit.com{submission.permalink}")
+            else:
+                logger.warning(f"FAILED: No duplicates were actually removed from submission {submission.id}")
 
         except Exception as e:
-            logger.error(f"Error removing duplicate comments: {e}")
+            logger.error(f"Critical error in duplicate comment removal: {e}", exc_info=True)
 
-    def _manage_sticky_comments(self, submission):
-        """Manage sticky comments with override authority."""
-        try:
-            logger.info(
-                f"Managing sticky comments on submission {submission.id}")
-
-            # Refresh submission to get latest comments
-            submission.comments.replace_more(limit=0)
-
-            bot_username = self.reddit.user.me().name
-            bot_comment = None
-            stickied_comments = []
-
-            # Find bot's comment and all stickied comments
-            for comment in submission.comments:
-                if hasattr(comment, 'stickied') and comment.stickied:
-                    stickied_comments.append(comment)
-
-                if (hasattr(comment, 'author') and comment.author
-                        and comment.author.name == bot_username):
-                    bot_comment = comment
-
-            if not bot_comment:
-                logger.warning(
-                    f"No bot comment found to sticky on submission {submission.id}"
-                )
-                return
-
-            # Try to sticky the bot's comment using correct PRAW methods
-            try:
-                # First approve the comment if needed
-                bot_comment.mod.approve()
-                logger.info(f"Approved bot comment {bot_comment.id}")
-
-                # Then distinguish and sticky the comment in one call
-                bot_comment.mod.distinguish(sticky=True, new=True)
-                logger.info(
-                    f"Successfully distinguished and stickied bot comment {bot_comment.id}")
-
-                self.notifier.send_notification(
-                    "Comment Stickied",
-                    f"Stickied bot comment on: {submission.title}",
-                    f"https://reddit.com{submission.permalink}")
-
-            except Exception as e:
-                logger.error(
-                    f"Failed to sticky bot comment {bot_comment.id}: {e}")
-                # Try alternative approach - just distinguish without sticky
-                try:
-                    bot_comment.mod.distinguish(how='yes')
-                    logger.info(
-                        f"Distinguished bot comment {bot_comment.id} (sticky failed)"
-                    )
-                except Exception as e2:
-                    logger.error(f"Failed to distinguish bot comment: {e2}")
-
-        except Exception as e:
-            logger.error(f"Error managing sticky comments: {e}")
+    
 
     def _fetch_related_africa_news(self, query: str, original_url: str = None):
         """
