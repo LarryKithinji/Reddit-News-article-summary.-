@@ -960,16 +960,16 @@ class RedditBot:
                 )
                 return
 
-            # Try to sticky the bot's comment directly
+            # Try to sticky the bot's comment using correct PRAW methods
             try:
-                # First distinguish the comment as a moderator
-                bot_comment.mod.distinguish(how='yes')
-                logger.info(f"Distinguished bot comment {bot_comment.id}")
+                # First approve the comment if needed
+                bot_comment.mod.approve()
+                logger.info(f"Approved bot comment {bot_comment.id}")
 
-                # Then make it sticky
-                bot_comment.mod.sticky(state=True)
+                # Then distinguish and sticky the comment in one call
+                bot_comment.mod.distinguish(sticky=True, new=True)
                 logger.info(
-                    f"Successfully stickied bot comment {bot_comment.id}")
+                    f"Successfully distinguished and stickied bot comment {bot_comment.id}")
 
                 self.notifier.send_notification(
                     "Comment Stickied",
