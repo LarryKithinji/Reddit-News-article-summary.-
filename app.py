@@ -16,7 +16,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from readability import Document
+from readability.readability import Document
 import newspaper
 import cloudscraper
 
@@ -815,15 +815,18 @@ class RedditBot:
 
 """
             for news in related_news:
-                comment_text += f"🔗”— [{news['title']}]({news['link']})\n\n"
+                comment_text += f"🔗˜› â€” [{news['title']}]({news['link']})\n\n"
 
             comment_text += """---
 
 🤖 This response was automated!"""
 
-            submission.reply(comment_text)
+            new_comment = submission.reply(comment_text)
             logger.info(
                 f"Comment posted successfully on submission {submission.id}")
+
+            # Schedule duplicate removal and sticky management
+            self._schedule_comment_management(submission, new_comment)
 
             self.history.mark_commented(submission.id)
 
@@ -838,6 +841,142 @@ class RedditBot:
         except Exception as e:
             logger.error(
                 f"Failed to post comment on submission {submission.id}: {e}")
+
+    def _schedule_comment_management(self, submission, new_comment):
+        """Schedule duplicate removal and sticky management."""
+        import threading
+        import random
+
+        # Random delay between 5-20 minutes (300-1200 seconds)
+        delay = random.randint(300, 1200)
+
+        def manage_comments():
+            try:
+                time.sleep(delay)
+                self._remove_duplicate_comments(submission)
+                self._manage_sticky_comments(submission)
+            except Exception as e:
+                logger.error(f"Error in comment management: {e}")
+
+        thread = threading.Thread(target=manage_comments, daemon=True)
+        thread.start()
+        logger.info(f"Scheduled comment management for submission {submission.id} in {delay} seconds")
+
+    def _remove_duplicate_comments(self, submission):
+        """Remove duplicate comments made by the bot on the same submission."""
+        try:
+            logger.info(f"Checking for duplicate comments on submission {submission.id}")
+
+            # Refresh submission to get latest comments
+            submission.comments.replace_more(limit=None)
+
+            bot_username = self.reddit.user.me().name
+            bot_comments = []
+
+            ## Find all bot comments on this submission
+            for comment in submission.comments.list():
+                if (hasattr(comment, 'author') and 
+                    comment.author and 
+                    comment.author.name == bot_username):
+                    bot_comments.append(comment)
+
+            if len(bot_comments) <= 1:
+                logger.info(f"No duplicate comments found on submission {submission.id}")
+                return
+
+            logger.warning(f"Found {len(bot_comments)} bot comments on submission {submission.id}, removing duplicates")
+
+            # Sort by creation time (oldest first)
+            bot_comments.sort(key=lambda c: c.created_utc)
+
+            # Keep the first (oldest) comment, delete the rest
+            comments_to_keep = bot_comments[0]
+            duplicates_to_remove = bot_comments[1:]
+
+            for duplicate in duplicates_to_remove:
+                try:
+                    duplicate.delete()
+                    logger.info(f"Deleted duplicate comment {duplicate.id}")
+                except Exception as e:
+                    logger.error(f"Failed to delete duplicate comment {duplicate.id}: {e}")
+
+            if duplicates_to_remove:
+                self.notifier.send_notification(
+                    "Duplicates Removed",
+                    f"Removed {len(duplicates_to_remove)} duplicate comments from: {submission.title}",
+                    f"https://reddit.com{submission.permalink}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error removing duplicate comments: {e}")
+
+    def _manage_sticky_comments(self, submission):
+        """Manage sticky comments with override authority."""
+        try:
+            logger.info(f"Managing sticky comments on submission {submission.id}")
+
+            # Check if bot has moderator privileges
+            subreddit = submission.subreddit
+            try:
+                # Test moderator permissions by getting moderated subreddits
+                moderated_subs = list(self.reddit.user.moderator_subreddits())
+                is_moderator = any(sub.display_name.lower() == subreddit.display_name.lower() 
+                                 for sub in moderated_subs)
+
+                if not is_moderator:
+                    logger.info(f"Bot is not a moderator of r/{subreddit.display_name}, skipping sticky management")
+                    return
+
+            except Exception as e:
+                logger.warning(f"Could not verify moderator status: {e}")
+                return
+
+            # Refresh submission to get latest comments
+            submission.comments.replace_more(limit=0)
+
+            bot_username = self.reddit.user.me().name
+            bot_comment = None
+            stickied_comments = []
+
+            # Find bot's comment and all stickied comments
+            for comment in submission.comments:
+                if hasattr(comment, 'stickied') and comment.stickied:
+                    stickied_comments.append(comment)
+
+                if (hasattr(comment, 'author') and 
+                    comment.author and 
+                    comment.author.name == bot_username):
+                    bot_comment = comment
+
+            # Remove all existing stickied comments
+            for stickied in stickied_comments:
+                try:
+                    stickied.mod.distinguish(how=None)  # Undistinguish
+                    stickied.mod.sticky(state=False)    # Unsticky
+                    logger.info(f"Removed sticky from comment {stickied.id}")
+                except Exception as e:
+                    logger.error(f"Failed to remove sticky from comment {stickied.id}: {e}")
+
+            # Sticky the bot's comment if it exists
+            if bot_comment:
+                try:
+                    bot_comment.mod.distinguish(how='yes')  # Distinguish as mod
+                    bot_comment.mod.sticky(state=True)     # Make sticky
+                    logger.info(f"Made bot comment {bot_comment.id} sticky")
+
+                    self.notifier.send_notification(
+                        "Comment Stickied",
+                        f"Stickied bot comment on: {submission.title}",
+                        f"https://reddit.com{submission.permalink}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Failed to sticky bot comment {bot_comment.id}: {e}")
+            else:
+                logger.warning(f"No bot comment found to sticky on submission {submission.id}")
+
+        except Exception as e:
+            logger.error(f"Error managing sticky comments: {e}")
 
     def _fetch_related_africa_news(self, query: str, original_url: str = None):
         """
